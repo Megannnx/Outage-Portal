@@ -73,11 +73,11 @@ describe("ingestion auth", () => {
     const { requireBearer } = await import("@/server/ingestion/auth");
     process.env.INGEST_TOKEN_NETXMS = "s3cret-token";
     const req = (h: Record<string, string>) => new Request("http://x/api/ingest/netxms", { method: "POST", headers: h });
-    expect(() => requireBearer(req({}), "INGEST_TOKEN_NETXMS")).toThrow(/Invalid token/);
-    expect(() => requireBearer(req({ authorization: "Bearer nope" }), "INGEST_TOKEN_NETXMS")).toThrow(/Invalid token/);
-    expect(() => requireBearer(req({ authorization: "Bearer s3cret-token" }), "INGEST_TOKEN_NETXMS")).not.toThrow();
+    await expect(requireBearer(req({}), "ingestNetxms")).rejects.toThrow(/Invalid token/);
+    await expect(requireBearer(req({ authorization: "Bearer nope" }), "ingestNetxms")).rejects.toThrow(/Invalid token/);
+    await expect(requireBearer(req({ authorization: "Bearer s3cret-token" }), "ingestNetxms")).resolves.toBeUndefined();
     process.env.INGEST_ALLOWED_IPS = "10.0.0.5";
-    expect(() => requireBearer(req({ authorization: "Bearer s3cret-token", "x-forwarded-for": "8.8.8.8" }), "INGEST_TOKEN_NETXMS")).toThrow(/not allowed/);
+    await expect(requireBearer(req({ authorization: "Bearer s3cret-token", "x-forwarded-for": "8.8.8.8" }), "ingestNetxms")).rejects.toThrow(/not allowed/);
     delete process.env.INGEST_ALLOWED_IPS;
   });
 });

@@ -1,10 +1,10 @@
 import { safeEqual, hmacSha256 } from "../lib/crypto";
 import { AppError } from "../lib/errors";
+import { getSecret, type SecretName } from "../lib/secrets";
 
 /** Bearer-token auth for machine-to-machine endpoints, with optional source IP allow-list. */
-export function requireBearer(req: Request, envVar: string) {
-  const expected = process.env[envVar];
-  if (!expected) throw new AppError("not_configured", `${envVar} is not configured on the server`, 503);
+export async function requireBearer(req: Request, name: SecretName) {
+  const expected = await getSecret(name);
   const got = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!got || !safeEqual(got, expected)) throw new AppError("unauthorized", "Invalid token", 401);
   const allow = (process.env.INGEST_ALLOWED_IPS ?? "").split(",").map((s) => s.trim()).filter(Boolean);

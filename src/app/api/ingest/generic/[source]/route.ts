@@ -9,7 +9,7 @@ import { errorResponse } from "@/server/api";
 export async function POST(req: NextRequest, { params }: { params: { source: string } }) {
   try {
     if (!/^[a-z0-9_-]{2,32}$/.test(params.source) || params.source === "netxms" || params.source === "telegram") return NextResponse.json({ error: "bad_source" }, { status: 400 });
-    requireBearer(req, "INGEST_TOKEN_GENERIC");
+    await requireBearer(req, "ingestGeneric");
     const r = await processEvent(getDb(), fromGeneric(params.source, await req.json()));
     return NextResponse.json(r, { status: 202 });
   } catch (e) { return errorResponse(e); }

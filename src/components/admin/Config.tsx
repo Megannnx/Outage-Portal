@@ -220,10 +220,12 @@ export function System() {
         <Card title="Audit log integrity"><div className={data.auditChain.ok ? "text-[18px] font-bold text-success" : "text-[18px] font-bold text-primary-bright"}>{data.auditChain.ok ? "Verified" : `BROKEN at #${data.auditChain.brokenAt}`}</div><div className="text-2xs text-ink-muted">{data.auditChain.checked} entries checked</div></Card>
       </div>
       <Card title="Integrations">
-        <table className="w-full text-[13px]"><tbody>{data.health.map((h: any) => (
+        <table className="w-full text-[13px]"><tbody>{data.health.filter((h: any) => h.key !== "sweep_lease").map((h: any) => (
           <tr key={h.key} className="border-t border-line first:border-0"><td className="py-1.5 pr-3 font-semibold">{h.label}</td><td className="pr-3">last OK {dateTime(h.lastSuccessAt)}</td><td className="text-2xs text-ink-muted">{h.lastErrorAt && <>last error {dateTime(h.lastErrorAt)}: {h.lastError}</>}</td></tr>
         ))}</tbody></table>
       </Card>
+      <Tokens />
+      {data.deliveryMode === "capture" && <Simulator />}
       {data.unmatchedEvents.length > 0 && <Card title="Unmatched monitoring events (add identifiers in Sites)"><ul className="space-y-1 text-[12.5px]">{data.unmatchedEvents.map((e: any) => <li key={e.id}><span className="font-mono">{e.objectRef || "—"}</span> {e.objectName} · {e.eventName} · {dateTime(e.receivedAt)}</li>)}</ul></Card>}
       {data.deadJobs.length > 0 && <Card title="Dead-letter jobs"><ul className="space-y-1 text-[12.5px]">{data.deadJobs.map((j: any) => <li key={j.id} className="flex items-center gap-2"><span className="font-mono">#{j.id} {j.kind}</span><span className="flex-1 truncate text-ink-muted">{j.lastError}</span><Button size="sm" onClick={async () => { await api(`/api/admin/jobs/${j.id}`, { body: {} }); reload(); }}>Retry</Button></li>)}</ul></Card>}
       <Card title="Audit log (latest 100)">
@@ -234,5 +236,51 @@ export function System() {
         </div>
       </Card>
     </div>
+  );
+}
+
+function Tokens() {
+  const [d, setD] = useState<{ tokens: { name: string; source: string; value: string }[]; encryptionKeySource: string } | null>(null);
+  const [show, setShow] = useState<string | null>(null);
+  const load = () => api<any>("/api/admin/secrets").then(setD).catch(() => {});
+  const LABEL: Record<string, string> = { ingestNetxms: "NetXMS ingestion token (Authorization: Bearer …)", ingestGeneric: "Generic monitoring ingestion token", bounceWebhook: "Bounce processor token" };
+  return (
+    <Card title="Integration tokens" actions={!d && <Button size="sm" onClick={load}>Show</Button>}>
+      {!d ? <div className="text-[13px] text-ink-muted">Tokens NetXMS and other systems use to send events to the portal. Viewing them is recorded in the audit log.</div> : (
+        <div className="space-y-2 text-[13px]">
+          {d.tokens.map((t) => (
+            <div key={t.name} className="flex flex-wrap items-center gap-2">
+              <span className="w-72 font-semibold">{LABEL[t.name]}</span>
+              <code className="flex-1 break-all rounded bg-background px-2 py-1 font-mono text-[12px]">{show === t.name ? t.value : "•".repeat(24)}</code>
+              <Button size="sm" variant="ghost" onClick={() => setShow(show === t.name ? null : t.name)}>{show === t.name ? "Hide" : "Reveal"}</Button>
+              {t.source === "database" && <Button size="sm" variant="ghost" onClick={async () => { if (confirm("Rotate this token? The old one stops working immediately.")) { await api("/api/admin/secrets", { body: { name: t.name } }); load(); } }}>Rotate</Button>}
+              {t.source === "environment" && <Badge>set in environment</Badge>}
+            </div>
+          ))}
+          {d.encryptionKeySource === "database" && <div className="text-2xs text-warning">The MFA encryption key is stored in the database. For production, set APP_ENCRYPTION_KEY in the hosting environment.</div>}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function Simulator() {
+  const { data } = useApi<{ items: any[] }>("/api/admin/sites");
+  const [site, setSite] = useState(""); const [msg, setMsg] = useState<string | null>(null);
+  async function fire(state: "down" | "up") {
+    setMsg(null);
+    try { const r = await api<any>("/api/admin/simulate", { body: { siteId: site, state } }); setMsg(`${state.toUpperCase()} sent → ${r.result}${r.note ? ` (${r.note})` : ""}. Watch it on the Operations screen.`); }
+    catch (e) { setMsg((e as Error).message); }
+  }
+  return (
+    <Card title="Outage simulator (capture mode only)">
+      <div className="flex flex-wrap items-center gap-2 text-[13px]">
+        <select className={`${inputCls} max-w-xs`} value={site} onChange={(e) => setSite(e.target.value)}><option value="">Choose a site…</option>{data?.items.filter((x) => x.active).map((x) => <option key={x.id} value={x.id}>{x.code} — {x.name}</option>)}</select>
+        <Button size="sm" variant="danger" disabled={!site} onClick={() => fire("down")}>Site goes DOWN</Button>
+        <Button size="sm" variant="success" disabled={!site} onClick={() => fire("up")}>Site comes UP</Button>
+      </div>
+      <p className="mt-2 text-2xs text-ink-muted">Sends the same event NetXMS would. Down for 3+ minutes → first message (captured, not sent). Up within 3 minutes → short interruption.</p>
+      {msg && <div className="mt-2 text-[13px]">{msg}</div>}
+    </Card>
   );
 }

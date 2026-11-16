@@ -1,11 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/client";
 import { Button, ErrorNote, Field, inputCls } from "@/components/ui";
 
 export default function Login() {
   const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  useEffect(() => { api<{ needsFirstAdmin: boolean }>("/api/setup").then((r) => { if (r.needsFirstAdmin) location.href = "/setup"; }).catch(() => {}); }, []);
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setErr(null);
     try {

@@ -8,6 +8,7 @@ import { getDb } from "@/server/db/client";
 import { requireUser } from "@/server/auth/session";
 import { errorResponse } from "@/server/api";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 export async function GET(req: Request) {
   try { await requireUser("incident.view"); } catch (e) { return errorResponse(e); }
   const db = getDb();
@@ -31,6 +32,8 @@ export async function GET(req: Request) {
       };
       void check();
       timer = setInterval(check, 3000);
+      // Serverless functions have a time limit: close cleanly and let EventSource reconnect.
+      setTimeout(() => { clearInterval(timer); try { controller.enqueue(enc.encode("retry: 1000\n\n")); controller.close(); } catch { /* */ } }, Number(process.env.SSE_MAX_SECONDS ?? (process.env.VERCEL ? 50 : 3600)) * 1000);
       req.signal.addEventListener("abort", () => { clearInterval(timer); try { controller.close(); } catch { /* */ } });
     },
     cancel() { clearInterval(timer); },

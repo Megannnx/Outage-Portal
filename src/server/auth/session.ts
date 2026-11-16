@@ -98,7 +98,7 @@ export async function verifyMfa(code: string) {
   if (!u) throw new AppError("unauthenticated", "Please sign in", 401);
   const db = getDb();
   const [row] = await db.select().from(users).where(eq(users.id, u.id));
-  if (!row.mfaSecretEnc || !authenticator.check(code.replace(/\s/g, ""), decrypt(row.mfaSecretEnc))) {
+  if (!row.mfaSecretEnc || !authenticator.check(code.replace(/\s/g, ""), await decrypt(row.mfaSecretEnc))) {
     await audit(db, { id: u.id, label: u.email, ip: clientIp() }, "auth.mfa_failed", "user", u.id);
     throw new AppError("bad_code", "That code is not valid", 400);
   }
@@ -110,7 +110,7 @@ export async function beginMfaSetup() {
   if (!u) throw new AppError("unauthenticated", "Please sign in", 401);
   if (u.mfaEnabled) throw new AppError("already", "Two-factor is already enabled", 400);
   const secret = authenticator.generateSecret();
-  await getDb().update(users).set({ mfaSecretEnc: encrypt(secret) }).where(eq(users.id, u.id));
+  await getDb().update(users).set({ mfaSecretEnc: await encrypt(secret) }).where(eq(users.id, u.id));
   return { secret, otpauth: authenticator.keyuri(u.email, "ATEC Outage Portal", secret) };
 }
 
@@ -119,7 +119,7 @@ export async function confirmMfaSetup(code: string) {
   if (!u) throw new AppError("unauthenticated", "Please sign in", 401);
   const db = getDb();
   const [row] = await db.select().from(users).where(eq(users.id, u.id));
-  if (!row.mfaSecretEnc || !authenticator.check(code.replace(/\s/g, ""), decrypt(row.mfaSecretEnc))) throw new AppError("bad_code", "That code is not valid", 400);
+  if (!row.mfaSecretEnc || !authenticator.check(code.replace(/\s/g, ""), await decrypt(row.mfaSecretEnc))) throw new AppError("bad_code", "That code is not valid", 400);
   await db.update(users).set({ mfaEnabled: true }).where(eq(users.id, u.id));
   await db.update(sessions).set({ mfaVerified: true }).where(eq(sessions.id, u.sessionId));
   await audit(db, { id: u.id, label: u.email }, "auth.mfa_enabled", "user", u.id);

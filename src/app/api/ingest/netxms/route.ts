@@ -11,7 +11,7 @@ import { healthError } from "@/server/lib/alerts";
 export async function POST(req: NextRequest) {
   const db = getDb();
   try {
-    requireBearer(req, "INGEST_TOKEN_NETXMS");
+    await requireBearer(req, "ingestNetxms");
     const raw = await req.text();
     if (raw.length > 20_000) return NextResponse.json({ error: "too_large" }, { status: 413 });
     let body: unknown;

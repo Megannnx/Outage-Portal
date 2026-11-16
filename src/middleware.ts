@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 // Fast redirect for page requests without a session cookie. Real authorisation happens server-side per request.
-const PUBLIC = ["/login", "/dispatch/", "/api/", "/_next/", "/favicon", "/icon"];
+const PUBLIC = ["/login", "/setup", "/dispatch/", "/api/", "/_next/", "/favicon", "/icon"];
 export function middleware(req: NextRequest) {
   const p = req.nextUrl.pathname;
   if (PUBLIC.some((x) => p.startsWith(x))) return NextResponse.next();

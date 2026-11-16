@@ -47,12 +47,16 @@ export async function drain(db: DB, workerId = "drain", maxRounds = 50) {
   return total;
 }
 
-export async function withSweepLock<T>(db: DB, fn: () => Promise<T>): Promise<T | null> {
-  const client = await (db as any).$client.connect();
-  try {
-    const r = await client.query("select pg_try_advisory_lock(7210002) as ok");
-    if (!r.rows[0].ok) return null;
-    try { return await fn(); } finally { await client.query("select pg_advisory_unlock(7210002)"); }
-  } finally { client.release(); }
+/**
+ * Run fn on at most one worker/tick at a time, using a short lease row instead of a
+ * session advisory lock (session locks are unsafe behind a transaction pooler).
+ */
+export async function withSweepLock<T>(db: DB, fn: () => Promise<T>, leaseSeconds = 25): Promise<T | null> {
+  const r = await db.execute(sql`
+    insert into integration_health (key, label, last_success_at) values ('sweep_lease', 'Sweep lease', now())
+    on conflict (key) do update set last_success_at = now()
+      where integration_health.last_success_at is null or integration_health.last_success_at < now() - make_interval(secs => ${leaseSeconds})
+    returning key`);
+  if (!r.rows.length) return null;
+  return fn();
 }
-void sql;

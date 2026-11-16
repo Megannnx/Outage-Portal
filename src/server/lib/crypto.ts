@@ -1,22 +1,22 @@
 import crypto from "node:crypto";
 
-function key(): Buffer {
-  const k = process.env.APP_ENCRYPTION_KEY;
-  if (!k) throw new Error("APP_ENCRYPTION_KEY is not set (32 bytes, base64)");
+async function key(): Promise<Buffer> {
+  const { getSecret } = await import("./secrets");
+  const k = await getSecret("appEncryptionKey");
   const buf = Buffer.from(k, "base64");
   if (buf.length !== 32) throw new Error("APP_ENCRYPTION_KEY must decode to 32 bytes");
   return buf;
 }
 /** AES-256-GCM for secrets at rest (MFA seeds). */
-export function encrypt(plain: string): string {
+export async function encrypt(plain: string): Promise<string> {
   const iv = crypto.randomBytes(12);
-  const c = crypto.createCipheriv("aes-256-gcm", key(), iv);
+  const c = crypto.createCipheriv("aes-256-gcm", await key(), iv);
   const enc = Buffer.concat([c.update(plain, "utf8"), c.final()]);
   return [iv, c.getAuthTag(), enc].map((b) => b.toString("base64")).join(".");
 }
-export function decrypt(blob: string): string {
+export async function decrypt(blob: string): Promise<string> {
   const [iv, tag, enc] = blob.split(".").map((p) => Buffer.from(p, "base64"));
-  const d = crypto.createDecipheriv("aes-256-gcm", key(), iv);
+  const d = crypto.createDecipheriv("aes-256-gcm", await key(), iv);
   d.setAuthTag(tag);
   return Buffer.concat([d.update(enc), d.final()]).toString("utf8");
 }

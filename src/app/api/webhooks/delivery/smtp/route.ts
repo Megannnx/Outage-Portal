@@ -13,7 +13,7 @@ import { errorResponse } from "@/server/api";
 const Body = z.object({ message_id: z.string().max(300), status: z.enum(["delivered", "bounced", "deferred", "failed"]), detail: z.string().max(1000).optional(), hard: z.boolean().optional() });
 export async function POST(req: NextRequest) {
   try {
-    requireBearer(req, "BOUNCE_WEBHOOK_TOKEN");
+    await requireBearer(req, "bounceWebhook");
     const b = Body.parse(await req.json());
     const id = b.message_id.startsWith("<") ? b.message_id : `<${b.message_id}>`;
     const found = await applyDeliveryStatus(getDb(), { providerMessageId: id, status: b.status, detail: b.detail, hard: b.hard, raw: b });

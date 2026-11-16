@@ -1,7 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   poweredByHeader: false,
-  experimental: { serverComponentsExternalPackages: ["pg", "nodemailer", "exceljs", "pdfkit", "bcryptjs"] },
+  experimental: {
+    serverComponentsExternalPackages: ["pg", "nodemailer", "exceljs", "pdfkit", "bcryptjs"],
+    // Migrations are read from disk at runtime by /api/setup.
+    outputFileTracingIncludes: { "/api/setup": ["./drizzle/**/*"] },
+  },
   async headers() {
     return [{
       source: "/(.*)",
