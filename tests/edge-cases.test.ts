@@ -455,3 +455,14 @@ it("Audit log is append-only and its hash chain verifies", async () => {
   await expect(ww.db.execute(sql`update audit_logs set action = 'x'`)).rejects.toThrow();
   await expect(ww.db.execute(sql`update technical_updates set original_text = 'x'`)).resolves.toBeDefined(); // no rows yet → no-op
 });
+
+it("Headend IP identifies the site when no object ID is registered (interface events still ignored)", async () => {
+  const st = await getSettings(w.db);
+  await w.db.insert(s.siteMonitoringIdentifiers).values({ siteId: w.hzd.id, source: "netxms", matchType: "ip", value: "10.75.9.1", critical: true });
+  const ts = Math.floor(at().getTime() / 1000);
+  const ifEv = await processEvent(w.db, fromNetxms({ event: "SYS_IF_DOWN", object_id: 777, object_name: "HZD L3GR10", ip: "10.75.9.1", timestamp: ts, interface: "ether3" }, st));
+  expect(ifEv.result).toBe("unmatched");
+  const r = await processEvent(w.db, fromNetxms({ event: "SYS_NODE_DOWN", object_id: 777, object_name: "HZD L3GR10", ip: "10.75.9.1", timestamp: ts + 1 }, st));
+  expect(r.result).toBe("processed");
+  expect((await incidentFor(w.db, w.hzd.id)).phase).toBe("validating");
+});

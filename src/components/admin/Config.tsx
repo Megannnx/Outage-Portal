@@ -44,8 +44,8 @@ export function Sites() {
         fields={[
           { key: "siteId", label: "Site", type: "select", options: sites, required: true },
           { key: "source", label: "Source", type: "select", options: [{ value: "netxms", label: "NetXMS" }, { value: "any", label: "Any (name match, incl. Telegram backup)" }] },
-          { key: "matchType", label: "Match", type: "select", options: [{ value: "object_id", label: "NetXMS object ID (recommended)" }, { value: "name_exact", label: "Exact object name" }, { value: "name_prefix", label: "Name starts with" }] },
-          { key: "value", label: "Value", required: true, hint: "Object ID (or id/interface for a link), or the device name, e.g. DWV L3GR10" },
+          { key: "matchType", label: "Match", type: "select", options: [{ value: "object_id", label: "NetXMS object ID (recommended)" }, { value: "ip", label: "Headend IP address" }, { value: "name_exact", label: "Exact object name" }, { value: "name_prefix", label: "Name starts with" }] },
+          { key: "value", label: "Value", required: true, hint: "Object ID (or id/interface for a link), the headend IP (e.g. 10.75.2.1), or the device name, e.g. DWV L3GR10" },
           { key: "critical", label: "Critical — this object going down means the SITE is down", type: "bool" }, { key: "label", label: "Label" },
         ]}
         defaults={{ source: "netxms", matchType: "object_id", critical: true } as any}

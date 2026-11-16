@@ -51,11 +51,13 @@ The portal raises a critical alert when nothing (event or heartbeat) has arrived
 
 ## 5. Map NetXMS objects to sites (Admin › Sites & monitoring)
 
-For each site, add a **monitoring identifier**:
+For each site, add a **monitoring identifier**. The **headend IP** (e.g. `10.75.2.1`) works out of the box because NetXMS sends `%a` with every event; it is loaded for the FMAS sites from the backhaul sheet. Alternatively:
 
 * **NetXMS object ID** of the device whose loss means *the site is down* (the headend/uplink router, e.g. `DWV L3GR10`) — mark **critical**. Object IDs are stable even if devices are renamed.
 * Optional non-critical identifiers (e.g. name prefix `DWV L2`) are recorded for history but never open an incident on their own.
 * A site is "down" when **any** critical identifier is down and "up" only when **all** are up.
+
+Tip: limit the EPP rule to the headend routers (for example a NetXMS container or a filter on the 10.75.x.1 addresses), so access switches going down don't generate "unmatched object" alerts.
 
 Events from objects not linked to a site raise an alert listing the unknown object in **Admin › System health**, so nothing is silently ignored.
 

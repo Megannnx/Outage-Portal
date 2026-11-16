@@ -17,9 +17,9 @@ import { badRequest } from "../lib/errors";
 const COLS = [
   "Network", "Province", "Site code", "Site name", "NetXMS device (critical)", "NetXMS object ID", "Backhaul provider",
   "Circuit / reference", "Upstream POP", "Residents list reference", "ISPs on this site", "Technical team", "RFO required (Y/N)",
-  "Address", "Notes", "Portal ID (do not edit)",
+  "Address", "Notes", "Headend IP", "Portal ID (do not edit)",
 ] as const;
-const FILL_IN = new Set([5, 6, 7, 8, 9, 10, 11, 14]);
+const FILL_IN = new Set([5, 6, 7, 8, 9, 10, 11, 14, 16]);
 
 const networkOf = (notes: string) => /Network:\s*(\w+)/.exec(notes)?.[1] ?? "";
 
@@ -41,25 +41,26 @@ export async function exportSitesWorkbook(db: DB): Promise<Buffer> {
     ws.views = [{ state: "frozen", xSplit: 4, ySplit: 1 }];
   };
   const ws = wb.addWorksheet("Sites");
-  ws.columns = COLS.map((h, i) => ({ header: h, key: String(i), width: [8, 14, 10, 30, 24, 16, 20, 20, 16, 22, 28, 12, 12, 28, 40, 38][i] }));
+  ws.columns = COLS.map((h, i) => ({ header: h, key: String(i), width: [8, 14, 10, 30, 24, 16, 20, 20, 16, 22, 28, 12, 12, 28, 40, 16, 38][i] }));
   for (const s of ss) {
     const crit = ids.filter((i) => i.siteId === s.id && i.critical);
     const oid = crit.find((i) => i.matchType === "object_id");
-    const dev = crit.find((i) => i.matchType !== "object_id")?.value ?? oid?.label ?? "";
+    const ip = crit.find((i) => i.matchType === "ip");
+    const dev = crit.find((i) => i.matchType === "name_exact" || i.matchType === "name_prefix")?.value ?? oid?.label ?? "";
     const ispNames = links.filter((l) => l.siteId === s.id).map((l) => ispRows.find((x) => x.id === l.ispId)?.name).filter(Boolean).join(", ");
     ws.addRow([networkOf(s.notes), s.region, s.code, s.name, dev, oid?.value ?? "", provs.find((p) => p.id === s.backhaulProviderId)?.name ?? "",
-      s.circuitRef, s.upstreamRef, s.residentListRef, ispNames, s.technicalTeam, s.rfoRequired ? "Y" : "N", s.address, s.notes, s.id]);
+      s.circuitRef, s.upstreamRef, s.residentListRef, ispNames, s.technicalTeam, s.rfoRequired ? "Y" : "N", s.address, s.notes, ip?.value ?? "", s.id]);
   }
   ws.eachRow((row, n) => {
     if (n === 1) return;
     row.eachCell({ includeEmpty: true }, (c, col) => {
       c.font = font;
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: FILL_IN.has(col) ? "FFFFF2CC" : col === 16 ? "FFE4E4E7" : "FFF1F1F4" } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: FILL_IN.has(col) ? "FFFFF2CC" : col === 17 ? "FFE4E4E7" : "FFF1F1F4" } };
     });
   });
   for (let r = 2; r <= ss.length + 1; r++) ws.getCell(`M${r}`).dataValidation = { type: "list", allowBlank: true, formulae: ['"Y,N"'] };
   head(ws);
-  ws.autoFilter = { from: "A1", to: `P${ss.length + 1}` };
+  ws.autoFilter = { from: "A1", to: `Q${ss.length + 1}` };
 
   const ic = wb.addWorksheet("ISP contacts");
   ic.columns = [{ header: "ISP name", width: 24 }, { header: "Contact name", width: 24 }, { header: "Outage notice email", width: 34 }, { header: "Notes", width: 40 }];
@@ -103,7 +104,7 @@ export async function importSitesWorkbook(db: DB, actor: Actor, file: Buffer, ap
   const result: ImportResult = { applied: false, changes: [], errors: [], warnings: [], contacts: { added: 0, skipped: 0 } };
   const usedCodes = new Map(existing.map((s) => [s.code, s.id]));
 
-  type Plan = { row: number; siteId: string | null; patch: Partial<typeof sites.$inferInsert>; providerName?: string; objectId?: string; device?: string; ispNames?: string[] };
+  type Plan = { row: number; siteId: string | null; patch: Partial<typeof sites.$inferInsert>; providerName?: string; objectId?: string; device?: string; ip?: string; ispNames?: string[] };
   const plans: Plan[] = [];
   const cell = (r: ExcelJS.Row, k: (typeof COLS)[number]) => (C[k] ? str(r.getCell(C[k]).value) : "");
 
@@ -149,6 +150,11 @@ export async function importSitesWorkbook(db: DB, actor: Actor, file: Buffer, ap
     const oid = cell(r, "NetXMS object ID").replace(/\.0$/, "");
     if (oid) { if (!/^\d+(\/[\w.\-:]+)?$/.test(oid)) result.errors.push({ row: n, message: `NetXMS object ID "${oid}" should be a number` }); else { plan.objectId = oid; changes.push("NetXMS object ID"); } }
     const dev = cell(r, "NetXMS device (critical)"); if (dev) { plan.device = dev; if (!oid) changes.push("NetXMS device name"); }
+    const ip = cell(r, "Headend IP");
+    if (ip) {
+      if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) result.errors.push({ row: n, message: `Headend IP "${ip}" is not a valid IPv4 address` });
+      else { plan.ip = ip; changes.push(`headend IP ${ip}`); }
+    }
     const ispCell = cell(r, "ISPs on this site");
     if (ispCell) { plan.ispNames = ispCell.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean); changes.push(`ISPs: ${plan.ispNames.join(", ")}`); }
     plans.push(plan);
@@ -195,6 +201,11 @@ export async function importSitesWorkbook(db: DB, actor: Actor, file: Buffer, ap
           .onConflictDoUpdate({ target: [siteMonitoringIdentifiers.source, siteMonitoringIdentifiers.matchType, siteMonitoringIdentifiers.value], set: { siteId, critical: true, label: p.device ?? "" } });
       } else if (p.device) {
         await tx.insert(siteMonitoringIdentifiers).values({ siteId, source: "any", matchType: "name_exact", value: p.device, critical: true, label: "From spreadsheet" })
+          .onConflictDoUpdate({ target: [siteMonitoringIdentifiers.source, siteMonitoringIdentifiers.matchType, siteMonitoringIdentifiers.value], set: { siteId, critical: true } });
+      }
+      if (p.ip) {
+        await tx.delete(siteMonitoringIdentifiers).where(and(eq(siteMonitoringIdentifiers.siteId, siteId), eq(siteMonitoringIdentifiers.matchType, "ip")));
+        await tx.insert(siteMonitoringIdentifiers).values({ siteId, source: "netxms", matchType: "ip", value: p.ip, critical: true, label: "Headend IP" })
           .onConflictDoUpdate({ target: [siteMonitoringIdentifiers.source, siteMonitoringIdentifiers.matchType, siteMonitoringIdentifiers.value], set: { siteId, critical: true } });
       }
       if (p.ispNames) {

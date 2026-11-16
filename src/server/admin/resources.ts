@@ -36,7 +36,7 @@ export const RESOURCES: Record<string, Resource> = {
   },
   identifiers: {
     table: s.siteMonitoringIdentifiers, label: (r) => `${r.matchType}=${r.value}`,
-    schema: z.object({ siteId: uuid, source: z.enum(["netxms", "telegram", "any"]).or(z.string().regex(/^[a-z0-9_-]{2,32}$/)), matchType: z.enum(["object_id", "name_exact", "name_prefix"]), value: z.string().trim().min(1).max(200), critical: z.boolean().default(true), label: z.string().max(100).default("") }),
+    schema: z.object({ siteId: uuid, source: z.enum(["netxms", "telegram", "any"]).or(z.string().regex(/^[a-z0-9_-]{2,32}$/)), matchType: z.enum(["object_id", "ip", "name_exact", "name_prefix"]), value: z.string().trim().min(1).max(200), critical: z.boolean().default(true), label: z.string().max(100).default("") }),
   },
   providers: {
     table: s.backhaulProviders, order: asc(s.backhaulProviders.name), softDelete: true, label: (r) => r.name,

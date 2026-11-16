@@ -62,10 +62,11 @@ async function matchIdentifier(tx: Tx, ev: NormalizedEvent) {
     inArray(siteMonitoringIdentifiers.source, [ev.source, "any"]),
     or(
       and(eq(siteMonitoringIdentifiers.matchType, "object_id"), eq(siteMonitoringIdentifiers.value, ev.objectRef)),
+      isInterface || !ev.ip ? sql`false` : and(eq(siteMonitoringIdentifiers.matchType, "ip"), eq(siteMonitoringIdentifiers.value, ev.ip)),
       isInterface ? sql`false` : and(eq(siteMonitoringIdentifiers.matchType, "name_exact"), sql`lower(${siteMonitoringIdentifiers.value}) = lower(${ev.objectName})`),
       isInterface ? sql`false` : and(eq(siteMonitoringIdentifiers.matchType, "name_prefix"), sql`${ev.objectName} <> '' and lower(${ev.objectName}) like lower(${siteMonitoringIdentifiers.value}) || '%'`),
     )));
-  const rank = (m: string) => (m === "object_id" ? 3 : m === "name_exact" ? 2 : 1);
+  const rank = (m: string) => (m === "object_id" ? 4 : m === "ip" ? 3 : m === "name_exact" ? 2 : 1);
   cands.sort((a, b) => rank(b.matchType) - rank(a.matchType) || b.value.length - a.value.length);
   const id = cands[0];
   if (!id) return null;

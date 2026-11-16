@@ -14,6 +14,8 @@ export interface NormalizedEvent {
   eventName: string;
   objectRef: string;    // stable id (NetXMS object id)
   objectName: string;   // human name (NetXMS object name)
+  /** Node's primary IP as reported by the source (NetXMS %a). Used for headend-IP matching. */
+  ip?: string;
   occurredAt: Date;
   raw: unknown;
 }
@@ -52,6 +54,7 @@ export function fromNetxms(body: unknown, s: Settings): NormalizedEvent {
     kind, eventName: name,
     objectRef: iface ? `${p.object_id}/${iface}` : p.object_id,
     objectName: p.object_name,
+    ip: p.ip && /^[0-9a-fA-F:.]+$/.test(p.ip) ? p.ip : undefined,
     occurredAt: safeTime(p.timestamp * 1000),
     raw: body,
   };
