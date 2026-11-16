@@ -286,7 +286,30 @@ function Simulator() {
       </div>
       <p className="mt-2 text-2xs text-ink-muted">Sends the same event NetXMS would. Down for 3+ minutes → first message (captured, not sent). Up within 3 minutes → short interruption.</p>
       {msg && <div className="mt-2 text-[13px]">{msg}</div>}
+      <SmtpTest />
     </Card>
+  );
+}
+
+function SmtpTest() {
+  const [to, setTo] = useState(""); const [network, setNetwork] = useState("FSN");
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  async function send() {
+    setBusy(true); setMsg(null);
+    try { const r = await api<any>("/api/admin/smtp-test", { method: "POST", body: { network, to } }); setMsg(`Sent from ${r.from} to ${r.to}. Check the inbox (and spam folder).`); }
+    catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <div className="mt-4 border-t border-line pt-3">
+      <div className="mb-2 text-[13px] font-semibold">Send a test email</div>
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="From mailbox"><select className={inputCls} value={network} onChange={(e) => setNetwork(e.target.value)}><option value="FSN">FSN</option><option value="FMAS">FMAS</option></select></Field>
+        <Field label="Send to"><input className={inputCls} type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="you@example.com" /></Field>
+        <Button size="sm" disabled={busy || !to} onClick={send}>{busy ? "Sending…" : "Send test"}</Button>
+      </div>
+      <div className="mt-1 text-2xs text-ink-muted">Sends a real email even while the portal is in capture mode.</div>
+      {msg && <div className="mt-2 text-[13px]">{msg}</div>}
+    </div>
   );
 }
 

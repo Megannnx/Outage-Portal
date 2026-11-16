@@ -16,7 +16,7 @@ import type { Tx } from "../db/client";
 import { jobs } from "../db/schema";
 import { clock, addMinutes } from "../lib/clock";
 
-export type JobKind = "validate_outage" | "verify_restoration" | "periodic_update" | "deliver_communication" | "internal_notify";
+export type JobKind = "validate_outage" | "verify_restoration" | "periodic_update" | "deliver_communication" | "internal_notify" | "smtp_test";
 
 export interface EnqueueInput {
   kind: JobKind;

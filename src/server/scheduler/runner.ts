@@ -8,6 +8,8 @@ import { runValidateOutage, runVerifyRestoration, runPeriodicUpdate } from "../i
 import { deliverCommunication } from "../comms/engine";
 import { runInternalNotify, type InternalMessage } from "../comms/internal";
 import { raiseAlert } from "../lib/alerts";
+import { sendSmtpTest } from "../comms/smtp-test";
+import { SYSTEM } from "../audit/audit";
 
 export async function executeJob(db: DB, job: ClaimedJob) {
   const p = job.payload as Record<string, string>;
@@ -17,6 +19,8 @@ export async function executeJob(db: DB, job: ClaimedJob) {
     case "periodic_update": return runPeriodicUpdate(db, job.incident_id!, p.dueAt);
     case "deliver_communication": return deliverCommunication(db, p.communicationId);
     case "internal_notify": return runInternalNotify(db, job.payload as unknown as InternalMessage);
+    // Lets an operator (or support) trigger a test email straight from the database queue.
+    case "smtp_test": { await sendSmtpTest(db, SYSTEM, { network: p.network ?? "", to: p.to }); return; }
     default: throw new Error(`Unknown job kind ${job.kind}`);
   }
 }
