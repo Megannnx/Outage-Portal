@@ -119,7 +119,8 @@ async function plan(db: Tx, audience: "resident" | "isp", siteIds: string[]): Pr
   const out: PlannedDelivery[] = [];
   if (audience === "resident") {
     const ss = await db.select().from(sites).where(inArray(sites.id, siteIds));
-    for (const s of ss) if (s.residentListRef) out.push({ channel: "client_api", address: `list:${s.residentListRef}`, recipientId: null, ispId: null, suppressed: null });
+    // Wave groups residents by estate name; the site's Residents list reference overrides it when the names differ.
+    for (const s of ss) { const ref = (s.residentListRef || s.estate || s.name).trim(); if (ref) out.push({ channel: "client_api", address: `list:${ref}`, recipientId: null, ispId: null, suppressed: null }); }
     const direct = await db.select().from(recipients).where(and(eq(recipients.audience, "resident"), inArray(recipients.siteId, siteIds)));
     for (const r of direct) out.push({ channel: "smtp", address: r.email.toLowerCase(), recipientId: r.id, ispId: null, suppressed: r.status === "active" ? null : `Recipient ${r.status}${r.statusReason ? `: ${r.statusReason}` : ""}` });
   } else {
@@ -299,7 +300,7 @@ export async function deliverCommunication(db: DB, communicationId: string): Pro
       try {
         const r = await adapter.send({
           deliveryId: d.id, address: d.address, subject: work.c.subject, text: work.c.body, html: toHtml(work.c.body),
-          meta: { incidentReference: work.inc.reference, siteCode: work.site.code, audience: work.c.audience, kind: work.c.kind, network: work.site.network },
+          meta: { incidentReference: work.inc.reference, siteCode: work.site.code, audience: work.c.audience, kind: work.c.kind, network: work.site.network, purpose: work.c.purpose },
         });
         status = r.status; providerId = r.providerMessageId ?? null;
         // Capture mode never reports an integration as healthy — it is not a live connection.

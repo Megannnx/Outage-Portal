@@ -1,19 +1,28 @@
 /**
- * Client communications API adapter — residents/clients.
+ * Client communications adapter: residents, via Wave (ATEC's client and ticketing system).
+ * Contract: docs/WAVE_INTEGRATION.md
  *
- * ATEC's client-base system is reached over HTTPS. The exact API is not yet
- * known, so this adapter speaks a small, documented contract (docs/INTEGRATIONS.md):
+ *   POST {CLIENT_API_URL}/api/outage-notices   (Bearer CLIENT_API_TOKEN, Idempotency-Key = delivery id)
+ *   → 202 { id }   Wave sends SMS + email + portal notice to every active client at the estate.
  *
- *   POST {CLIENT_API_URL}
- *   Authorization: Bearer {CLIENT_API_TOKEN}
- *   Idempotency-Key: {deliveryId}
- *   { distribution_ref, subject, text, html, incident_reference, site_code, callback_url }
- *   → 2xx { id }   (message accepted for the residents on that distribution list)
+ * address "list:<estate>"  = everyone at that estate (the site's Residents list reference)
+ * address "account:<code>" = one client account only (resident Test mode)
  *
- * If the real API differs, only this file changes. Delivery status callbacks come
- * back through /api/webhooks/delivery/client-api (HMAC signed).
+ * Delivery results come back through /api/webhooks/delivery/client-api (HMAC signed).
  */
 import { DeliveryError, type DeliveryAdapter, type OutboundMessage, type SendResult } from "./types";
+
+/** CLIENT_API_URL may be Wave's base URL or the full endpoint URL. */
+export function waveUrl(path: string) {
+  const base = (process.env.CLIENT_API_URL ?? "").replace(/\/+$/, "");
+  return base.endsWith("/api/outage-notices") ? base.replace(/\/api\/outage-notices$/, path) : `${base}${path}`;
+}
+
+/** SMS uses the approved subject line (it already names the estate, the update and the reference). */
+export function smsText(subject: string) {
+  const t = subject.replace(/\s+/g, " ").trim();
+  return t.length <= 300 ? t : `${t.slice(0, 297)}...`;
+}
 
 export const clientApiAdapter: DeliveryAdapter = {
   channel: "client_api",
@@ -31,7 +40,7 @@ export const clientApiAdapter: DeliveryAdapter = {
     const timer = setTimeout(() => ctrl.abort(), Number(process.env.CLIENT_API_TIMEOUT_MS ?? 15000));
     let res: Response;
     try {
-      res = await fetch(process.env.CLIENT_API_URL!, {
+      res = await fetch(waveUrl("/api/outage-notices"), {
         method: "POST",
         signal: ctrl.signal,
         headers: {
@@ -40,13 +49,18 @@ export const clientApiAdapter: DeliveryAdapter = {
           "idempotency-key": msg.deliveryId,
         },
         body: JSON.stringify({
-          ...(isAccount ? { account_code: ref } : { distribution_ref: ref }),
+          delivery_id: msg.deliveryId,
+          incident_reference: msg.meta.incidentReference,
+          ...(isAccount ? { account_code: ref, estate: null } : { estate: ref, account_code: null }),
+          network: msg.meta.network || null,
+          kind: msg.meta.kind,
+          notice_status: msg.meta.purpose === "restoration" || msg.meta.purpose === "final" ? "resolved" : "open",
+          channels: ["sms", "email", "portal"],
           subject: isAccount ? `[TEST] ${msg.subject}` : msg.subject,
           text: msg.text,
           html: msg.html,
-          incident_reference: msg.meta.incidentReference,
+          sms_text: smsText(isAccount ? `[TEST] ${msg.subject}` : msg.subject),
           site_code: msg.meta.siteCode,
-          delivery_id: msg.deliveryId,
           callback_url: process.env.PUBLIC_BASE_URL ? `${process.env.PUBLIC_BASE_URL}/api/webhooks/delivery/client-api` : undefined,
         }),
       });

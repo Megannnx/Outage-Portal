@@ -4,7 +4,7 @@ export interface OutboundMessage {
   subject: string;
   text: string;
   html: string;
-  meta: { incidentReference: string; siteCode: string; audience: string; kind: string; network?: string };
+  meta: { incidentReference: string; siteCode: string; audience: string; kind: string; network?: string; purpose?: string };
 }
 export interface SendResult { status: "accepted" | "delivered"; providerMessageId?: string }
 

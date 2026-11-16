@@ -6,6 +6,7 @@ import { sql } from "drizzle-orm";
 import type { DB } from "../db/client";
 import { getAdapter, deliveryMode } from "../comms/adapters";
 import { smtpNetworks, smtpProfile } from "../comms/adapters/smtp";
+import { waveUrl } from "../comms/adapters/client-api";
 import { KINDS } from "../domain/catalog";
 import { secretSource } from "../lib/secrets";
 import { getSettings } from "../domain/settings";
@@ -61,6 +62,20 @@ export async function readiness(db: DB): Promise<{ mode: string; ready: boolean;
   const nets = smtpNetworks();
   const smtpDetail = nets.length ? nets.map((n) => { const c = smtpProfile(n); return `${n}: ${c.from ?? "?"} via ${c.host ?? "?"}`; }).join(" · ") : `Relay ${process.env.SMTP_HOST}`;
   const smtpAllErr = smtpErr ?? (deliveryMode() === "capture" ? null : nets.map((n) => smtp.configError(n)).find(Boolean) ?? null);
+  if (process.env.CLIENT_API_URL && process.env.CLIENT_API_TOKEN) {
+    try {
+      const r = await fetch(waveUrl("/api/outage-notices/estates"), { headers: { authorization: `Bearer ${process.env.CLIENT_API_TOKEN}` }, signal: AbortSignal.timeout(10_000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const estates = new Set(((await r.json()) as { estate: string }[]).map((e) => e.estate.trim().toLowerCase()));
+      const rows = await db.execute(sql`select code, coalesce(nullif(resident_list_ref,''), nullif(estate,''), name) as ref from sites where active and code not like 'DEMO-%'`);
+      const missing = (rows.rows as { code: string; ref: string }[]).filter((x) => !estates.has(x.ref.trim().toLowerCase()));
+      add({ key: "wave_estates", label: "Every site matches an estate in Wave", status: missing.length ? "fail" : "ok",
+        detail: missing.length ? `${missing.length} site(s) not found in Wave: ${missing.slice(0, 15).map((m) => `${m.code} "${m.ref}"`).join(", ")}${missing.length > 15 ? " …" : ""}` : `${rows.rows.length} sites matched to Wave estates`,
+        fix: "Set the site's Residents list reference to the estate name exactly as it appears in Wave" });
+    } catch (e) {
+      add({ key: "wave_estates", label: "Every site matches an estate in Wave", status: "fail", detail: `Could not read Wave's estate list: ${(e as Error).message}`, fix: "Check CLIENT_API_URL / CLIENT_API_TOKEN and that Wave exposes /api/outage-notices/estates" });
+    }
+  }
   add({ key: "resident_lock", label: "Resident sending", status: settings.residentDelivery === "live" ? "ok" : "warn",
     detail: settings.residentDelivery === "off" ? "Locked — nothing is sent to residents" : settings.residentDelivery === "test" ? `Test mode — only test account(s) ${settings.residentTestAccounts.join(", ") || "(none set)"} receive resident messages` : "Live — residents receive outage messages",
     fix: "Admin › Settings › Resident sending. Switch to Live only after the resident test has been signed off." });

@@ -71,3 +71,8 @@ Add identifiers with that `source` (or "Any" for name matches).
 ## Technician dispatch / ticketing
 
 The portal creates an internal **URGENT** work order with all required fields, emails the site's technical team mailbox and Technical users, and includes a one-tap acknowledgement link (`/dispatch/<token>`, no login, capability token stored only as a hash). It tracks *logged → team notified → acknowledged → on site → completed* and escalates if not acknowledged. If a dispatch is also logged in another system, its number can be recorded on the dispatch. Automatic ticket creation in an external system needs that system's API — not implemented.
+
+
+## Residents: Wave
+
+Resident messages go through Wave (SMS, email and portal notice per estate). The full contract is in [WAVE_INTEGRATION.md](WAVE_INTEGRATION.md). Each site's Wave estate is its *Residents list reference*, or its estate name when that field is blank. Resident sending is controlled by the safety lock in Admin › Settings (Off / Test / Live).
