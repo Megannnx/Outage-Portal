@@ -18,9 +18,11 @@ export function Sites() {
   const isps = useOpts("isps", (r) => r.name);
   const { data: links, reload } = useApi<{ items: { siteId: string; ispId: string }[] }>("/api/admin/site-isps");
   const [siteFor, setSiteFor] = useState<string>("");
+  const [ver, setVer] = useState(0); // bump to refresh the tables after a spreadsheet import
   return (
     <div className="space-y-8">
-      <Crud resource="sites" title="Sites" search={(r) => `${r.code} ${r.name} ${r.estate} ${r.circuitRef}`}
+      <SiteImport onDone={() => { reload(); setVer((v) => v + 1); }} />
+      <Crud key={`s${ver}`} resource="sites" title="Sites" search={(r) => `${r.code} ${r.name} ${r.estate} ${r.circuitRef}`}
         fields={[
           { key: "code", label: "Site code", required: true, hint: "e.g. DWV — matches NetXMS naming" }, { key: "name", label: "Site name", required: true, warn: "Inserted as {{site_name}} in customer messages." },
           { key: "estate", label: "Estate / area", warn: "Inserted as {{estate_name}}." }, { key: "region", label: "Region" }, { key: "address", label: "Address", type: "textarea" },
@@ -38,7 +40,7 @@ export function Sites() {
           { label: "Residents list", render: (r: any) => r.residentListRef ? <span className="font-mono text-[12px]">{r.residentListRef}</span> : <Badge tone="red">missing</Badge> },
           { label: "ISPs", render: (r: any) => { const n = links?.items.filter((l) => l.siteId === r.id).length ?? 0; return n ? n : <Badge tone="red">none</Badge>; } },
         ]} />
-      <Crud resource="identifiers" title="Monitoring identifiers" canDelete deleteLabel="Remove" search={(r) => `${r.value} ${r.label} ${sites.find((s) => s.value === r.siteId)?.label}`}
+      <Crud key={`i${ver}`} resource="identifiers" title="Monitoring identifiers" canDelete deleteLabel="Remove" search={(r) => `${r.value} ${r.label} ${sites.find((s) => s.value === r.siteId)?.label}`}
         fields={[
           { key: "siteId", label: "Site", type: "select", options: sites, required: true },
           { key: "source", label: "Source", type: "select", options: [{ value: "netxms", label: "NetXMS" }, { value: "any", label: "Any (name match, incl. Telegram backup)" }] },
@@ -213,6 +215,7 @@ export function System() {
   if (!data) return <div className="text-ink-muted">Loading…</div>;
   return (
     <div className="space-y-4">
+      <Readiness />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Card title="Delivery mode"><div className={data.deliveryMode === "live" ? "text-[18px] font-bold text-success" : "text-[18px] font-bold text-primary-bright"}>{data.deliveryMode.toUpperCase()}</div><div className="text-2xs text-ink-muted">{data.deliveryMode === "live" ? "Messages are delivered to real recipients." : "Capture mode: nothing leaves the system."}</div></Card>
         <Card title="Worker"><div className={data.workerOk ? "text-[18px] font-bold text-success" : "text-[18px] font-bold text-primary-bright"}>{data.workerOk ? "Running" : "NOT RUNNING"}</div><div className="text-2xs text-ink-muted">Last heartbeat {dateTime(data.workerLastSeen)}</div></Card>
@@ -280,6 +283,84 @@ function Simulator() {
         <Button size="sm" variant="success" disabled={!site} onClick={() => fire("up")}>Site comes UP</Button>
       </div>
       <p className="mt-2 text-2xs text-ink-muted">Sends the same event NetXMS would. Down for 3+ minutes → first message (captured, not sent). Up within 3 minutes → short interruption.</p>
+      {msg && <div className="mt-2 text-[13px]">{msg}</div>}
+    </Card>
+  );
+}
+
+type ImportResult = { applied: boolean; changes: { row: number; site: string; action: string; changes: string[] }[]; errors: { row: number; message: string }[]; warnings: string[]; contacts: { added: number; skipped: number } };
+function SiteImport({ onDone }: { onDone: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [res, setRes] = useState<ImportResult | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function send(apply: boolean) {
+    if (!file) return;
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch(`/api/admin/sites-workbook${apply ? "?apply=1" : ""}`, { method: "POST", body: await file.arrayBuffer(), headers: { "content-type": "application/octet-stream" }, credentials: "same-origin" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message ?? "Upload failed");
+      setRes(d);
+      if (apply) { onDone(); setFile(null); }
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <Card title="Bulk update sites from a spreadsheet">
+      <div className="space-y-3 text-[13px]">
+        <p className="text-ink-secondary">Download the current sites, fill in the yellow columns (NetXMS object ID, backhaul, residents list, ISPs…) and the ISP contacts tab, then upload it. You will see every change before anything is saved. Blank cells leave existing values unchanged.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <a href="/api/admin/sites-workbook"><Button size="sm">Download sites spreadsheet</Button></a>
+          <input type="file" accept=".xlsx" aria-label="Spreadsheet to upload" className="text-[12px]" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setRes(null); }} />
+          <Button size="sm" variant="primary" disabled={!file || busy} onClick={() => send(false)}>{busy && !res ? "Reading…" : "Preview changes"}</Button>
+        </div>
+        <ErrorNote error={err} />
+        {res && (
+          <div className="space-y-2">
+            {res.applied ? <div className="rounded-lg border border-success-edge bg-success-tint px-3 py-2">Saved: {res.changes.length} site(s) updated, {res.contacts.added} ISP contact(s) added{res.contacts.skipped ? `, ${res.contacts.skipped} already existed` : ""}.</div>
+              : <div className="font-semibold">{res.changes.length} site(s) will change{res.errors.length ? ` · ${res.errors.length} problem(s) must be fixed first` : ""}</div>}
+            {res.errors.length > 0 && <ul className="space-y-0.5 rounded-lg border border-primary-edge bg-primary-tint p-2">{res.errors.map((e, i) => <li key={i}>Row {e.row}: {e.message}</li>)}</ul>}
+            {res.warnings.length > 0 && <ul className="space-y-0.5 rounded-lg border border-warning-edge bg-warning-tint p-2 text-[12px]">{res.warnings.slice(0, 30).map((w, i) => <li key={i}>{w}</li>)}{res.warnings.length > 30 && <li>…and {res.warnings.length - 30} more</li>}</ul>}
+            {!res.applied && res.changes.length > 0 && (
+              <div className="max-h-72 overflow-y-auto rounded-lg border border-line">
+                <table className="w-full text-[12px]"><tbody>{res.changes.map((c) => (
+                  <tr key={c.row} className="border-t border-line first:border-0"><td className="px-2 py-1 text-ink-muted">Row {c.row}</td><td className="px-2 font-semibold">{c.site}</td><td className="px-2"><Badge tone={c.action === "create" ? "amber" : "grey"}>{c.action}</Badge></td><td className="px-2">{c.changes.join(" · ")}</td></tr>
+                ))}</tbody></table>
+              </div>
+            )}
+            {!res.applied && res.changes.length > 0 && !res.errors.length && <Button variant="primary" disabled={busy} onClick={() => send(true)}>{busy ? "Saving…" : `Apply ${res.changes.length} change(s)`}</Button>}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+type Readiness = { mode: string; ready: boolean; checks: { key: string; label: string; status: "ok" | "warn" | "fail"; detail: string; fix?: string }[] };
+function Readiness() {
+  const { data, reload } = useApi<Readiness>("/api/admin/readiness");
+  const [busy, setBusy] = useState(false); const [msg, setMsg] = useState<string | null>(null);
+  async function removeDemo() {
+    const typed = prompt('This deletes demo sites, demo incidents, simulated outages and demo ISPs, and returns demo-approved wording to "pending approval". Type REMOVE DEMO DATA to continue.');
+    if (typed !== "REMOVE DEMO DATA") return;
+    setBusy(true); setMsg(null);
+    try { const r = await api<any>("/api/admin/demo-data", { method: "DELETE", body: { confirm: typed } }); setMsg(`Removed ${r.sites} demo site(s), ${r.incidents} incident(s), ${r.isps} ISP(s), ${r.contacts} contact(s); ${r.templatesBackToPending} template(s) back to pending approval.`); reload(); }
+    catch (e) { setMsg((e as Error).message); } finally { setBusy(false); }
+  }
+  if (!data) return null;
+  const fails = data.checks.filter((c) => c.status === "fail").length;
+  return (
+    <Card title={<span>Go-live readiness — {data.ready ? <span className="text-success">ready to switch to live</span> : <span className="text-primary-bright">{fails} item(s) to complete</span>}</span>}
+      actions={<Button size="sm" variant="ghost" onClick={reload}>Re-check</Button>}>
+      <ul className="divide-y divide-line text-[13px]">
+        {data.checks.map((c) => (
+          <li key={c.key} className="flex items-start gap-3 py-2">
+            <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold ${c.status === "ok" ? "bg-success text-black" : c.status === "warn" ? "bg-warning text-black" : "bg-primary text-white"}`}>{c.status === "ok" ? "✓" : c.status === "warn" ? "!" : "✗"}</span>
+            <div className="min-w-0 flex-1"><div className="font-semibold">{c.label}</div><div className="text-ink-secondary">{c.detail}</div>{c.status !== "ok" && c.fix && <div className="text-2xs text-ink-muted">How: {c.fix}</div>}</div>
+            {c.key === "demo" && c.status !== "ok" && <Button size="sm" variant="danger" disabled={busy} onClick={removeDemo}>Remove demo data</Button>}
+          </li>
+        ))}
+      </ul>
       {msg && <div className="mt-2 text-[13px]">{msg}</div>}
     </Card>
   );
