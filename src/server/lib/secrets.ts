@@ -18,6 +18,7 @@ export const SECRETS = {
   ingestNetxms: { env: "INGEST_TOKEN_NETXMS", gen: () => crypto.randomBytes(32).toString("hex") },
   ingestGeneric: { env: "INGEST_TOKEN_GENERIC", gen: () => crypto.randomBytes(32).toString("hex") },
   bounceWebhook: { env: "BOUNCE_WEBHOOK_TOKEN", gen: () => crypto.randomBytes(32).toString("hex") },
+  waveApi: { env: "WAVE_API_TOKEN", gen: () => crypto.randomBytes(32).toString("hex") },
 } as const;
 export type SecretName = keyof typeof SECRETS;
 

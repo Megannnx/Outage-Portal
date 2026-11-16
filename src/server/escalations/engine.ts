@@ -155,6 +155,11 @@ export async function runHealthSweep(db: DB) {
     .where(and(inArray(communicationDeliveries.status, ["pending", "sending"]), lt(communicationDeliveries.updatedAt, addMinutes(now, -15))));
   if ((pendingDeliveries[0]?.n ?? 0) > 0) await raiseAlert(db, "delivery_stuck", "critical", `${pendingDeliveries[0].n} delivery(ies) stuck for over 15 minutes`);
   else await resolveAlert(db, "delivery_stuck");
+  // Wave collects resident notices; if it stops collecting, residents are not being told.
+  const waiting = await db.execute(sql`select count(*)::int as n, min(updated_at) as oldest from communication_deliveries where channel = 'client_api' and status = 'pending' and updated_at < ${addMinutes(now, -5).toISOString()}`);
+  const w = waiting.rows[0] as { n: number; oldest: string | null };
+  if (process.env.CLIENT_API_URL == null && w.n > 0) await raiseAlert(db, "wave_not_collecting", "critical", `Wave has not collected ${w.n} resident notice(s) for over 5 minutes — residents are not being informed. Check Wave's connection to the portal.`);
+  else await resolveAlert(db, "wave_not_collecting");
   void alerts;
   await runRetention(db);
 }

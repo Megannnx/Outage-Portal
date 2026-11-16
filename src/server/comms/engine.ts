@@ -24,6 +24,7 @@ import { MissingValueError, render, toHtml, type Vars } from "./render";
 import { enqueue, cancelJobs } from "../scheduler/jobs";
 import { addTimeline } from "../incidents/timeline";
 import { getAdapter, DeliveryError } from "./adapters";
+import { heldForWave } from "../integrations/wave";
 
 export type Purpose = "initial" | "cause" | "technical" | "periodic" | "restoration" | "final";
 const OUTAGE_PURPOSES: Purpose[] = ["initial", "cause", "technical", "periodic"];
@@ -276,7 +277,8 @@ export async function deliverCommunication(db: DB, communicationId: string): Pro
       return null;
     }
     const now = clock.now();
-    const due = ds.filter((d) => d.status === "pending" || d.status === "deferred" ||
+    // Resident notices collected by Wave are not sent from here (see integrations/wave.ts).
+    const due = ds.filter((d) => !heldForWave(d)).filter((d) => d.status === "pending" || d.status === "deferred" ||
       (d.status === "sending" && (!d.lastAttemptAt || now.getTime() - d.lastAttemptAt.getTime() > LEASE_MS)));
     if (due.length) {
       await tx.update(communicationDeliveries).set({ status: "sending", lastAttemptAt: now, attempts: sql`${communicationDeliveries.attempts} + 1`, updatedAt: now })
@@ -325,6 +327,11 @@ export async function deliverCommunication(db: DB, communicationId: string): Pro
     const failed = ds.filter((d) => d.status === "failed" || d.status === "bounced").length;
     const deferred = ds.filter((d) => d.status === "deferred");
     const now = clock.now();
+    if (!deferred.length && ds.some((d) => heldForWave(d) && ["pending", "sending"].includes(d.status))) {
+      // Waiting for Wave to collect and report; Wave's result settles the communication.
+      await tx.update(communications).set({ status: "sending", sentAt: c.sentAt ?? (ok ? now : null) }).where(eq(communications.id, c.id));
+      return;
+    }
     if (deferred.length) {
       const attempt = Math.max(...deferred.map((d) => d.attempts));
       const wait = settings.deliveryRetryMinutes[Math.min(attempt - 1, settings.deliveryRetryMinutes.length - 1)];

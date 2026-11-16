@@ -5,7 +5,7 @@ import { getDb } from "@/server/db/client";
 import { audit } from "@/server/audit/audit";
 export const dynamic = "force-dynamic";
 /** Integration tokens administrators need to configure NetXMS etc. Values are only returned to administrators. */
-const NAMES = ["ingestNetxms", "ingestGeneric", "bounceWebhook"] as const;
+const NAMES = ["ingestNetxms", "ingestGeneric", "bounceWebhook", "waveApi"] as const;
 export const GET = route({ perm: "admin.config" }, async ({ actor }) => {
   await audit(getDb(), actor, "secrets.viewed", "settings", "integration_tokens");
   return { tokens: await Promise.all(NAMES.map(async (n) => ({ name: n, source: secretSource(n), value: await getSecret(n) }))), encryptionKeySource: secretSource("appEncryptionKey") };

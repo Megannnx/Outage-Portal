@@ -7,6 +7,7 @@ import type { DB } from "../db/client";
 import { getAdapter, deliveryMode } from "../comms/adapters";
 import { smtpNetworks, smtpProfile } from "../comms/adapters/smtp";
 import { waveUrl } from "../comms/adapters/client-api";
+import { residentTransport } from "../integrations/wave";
 import { KINDS } from "../domain/catalog";
 import { secretSource } from "../lib/secrets";
 import { getSettings } from "../domain/settings";
@@ -62,7 +63,14 @@ export async function readiness(db: DB): Promise<{ mode: string; ready: boolean;
   const nets = smtpNetworks();
   const smtpDetail = nets.length ? nets.map((n) => { const c = smtpProfile(n); return `${n}: ${c.from ?? "?"} via ${c.host ?? "?"}`; }).join(" · ") : `Relay ${process.env.SMTP_HOST}`;
   const smtpAllErr = smtpErr ?? (deliveryMode() === "capture" ? null : nets.map((n) => smtp.configError(n)).find(Boolean) ?? null);
-  if (process.env.CLIENT_API_URL && process.env.CLIENT_API_TOKEN) {
+  if (residentTransport() === "pull") {
+    const h = await db.execute(sql`select last_success_at from integration_health where key = 'delivery:wave'`);
+    const last = (h.rows[0] as { last_success_at: string | null } | undefined)?.last_success_at;
+    const fresh = last && Date.now() - new Date(last).getTime() < 10 * 60_000;
+    add({ key: "wave", label: "Wave is connected and collecting resident notices", status: fresh ? "ok" : "fail",
+      detail: last ? `Last collection ${new Date(last).toISOString().slice(0, 16).replace("T", " ")} UTC` : "Wave has never connected",
+      fix: "Give Wave the portal address and the Wave API key (Admin › System › Integration tokens) — see docs/WAVE_INTEGRATION.md" });
+  } else if (process.env.CLIENT_API_URL && process.env.CLIENT_API_TOKEN) {
     try {
       const r = await fetch(waveUrl("/api/outage-notices/estates"), { headers: { authorization: `Bearer ${process.env.CLIENT_API_TOKEN}` }, signal: AbortSignal.timeout(10_000) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -80,7 +88,7 @@ export async function readiness(db: DB): Promise<{ mode: string; ready: boolean;
     detail: settings.residentDelivery === "off" ? "Locked — nothing is sent to residents" : settings.residentDelivery === "test" ? `Test mode — only test account(s) ${settings.residentTestAccounts.join(", ") || "(none set)"} receive resident messages` : "Live — residents receive outage messages",
     fix: "Admin › Settings › Resident sending. Switch to Live only after the resident test has been signed off." });
   add({ key: "smtp", label: "Email (SMTP) configured — ISPs & internal", status: smtpAllErr ? "fail" : "ok", detail: smtpAllErr ?? smtpDetail, fix: "Set SMTP_HOST and SMTP_PORT, plus per network SMTP_FSN_USER / SMTP_FSN_PASSWORD / SMTP_FSN_FROM and SMTP_FMAS_USER / SMTP_FMAS_PASSWORD / SMTP_FMAS_FROM, in the hosting environment" });
-  add({ key: "client_api", label: "Residents' communications API configured", status: capiErr ? "fail" : "ok", detail: capiErr ?? "Configured", fix: "Set CLIENT_API_URL and CLIENT_API_TOKEN (see docs/INTEGRATIONS.md)" });
+  if (residentTransport() !== "pull")   add({ key: "client_api", label: "Residents' communications API configured", status: capiErr ? "fail" : "ok", detail: capiErr ?? "Configured", fix: "Set CLIENT_API_URL and CLIENT_API_TOKEN (see docs/INTEGRATIONS.md)" });
   const nx = (await db.execute(sql`select last_success_at from integration_health where key = 'monitoring:netxms'`)).rows[0] as { last_success_at: string | null } | undefined;
   const realEvents = await n(db, sql`select count(*) as n from monitoring_events where source = 'netxms' and raw->>'simulated' is null`);
   add({ key: "netxms", label: "NetXMS is sending events", status: realEvents ? "ok" : "fail",

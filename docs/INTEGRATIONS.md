@@ -75,4 +75,4 @@ The portal creates an internal **URGENT** work order with all required fields, e
 
 ## Residents: Wave
 
-Resident messages go through Wave (SMS, email and portal notice per estate). The full contract is in [WAVE_INTEGRATION.md](WAVE_INTEGRATION.md). Each site's Wave estate is its *Residents list reference*, or its estate name when that field is blank. Resident sending is controlled by the safety lock in Admin › Settings (Off / Test / Live).
+Wave collects resident notices from the portal's Wave API (`/api/wave/v1`, Bearer *Wave API key*) and delivers them by SMS, email and portal notice per estate. The full contract is in [WAVE_INTEGRATION.md](WAVE_INTEGRATION.md). Each site's Wave estate is its *Residents list reference*, or its estate name when that field is blank. Resident sending is controlled by the safety lock in Admin › Settings (Off / Test / Live). Setting `CLIENT_API_URL` switches to the older push mode instead.

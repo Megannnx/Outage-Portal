@@ -12,6 +12,7 @@ import { getSettings } from "@/server/domain/settings";
 import { claimDue, failJob } from "@/server/scheduler/jobs";
 import { drain } from "@/server/scheduler/runner";
 import { createDraft, submitForApproval, approveVersion } from "@/server/comms/templates";
+import { claimNotices, reportResult } from "@/server/integrations/wave";
 
 let w: World;
 beforeEach(async () => { w = await setup(); });
@@ -485,11 +486,31 @@ describe("Resident safety lock", () => {
     expect(captured.filter((m) => m.address.includes("@")).length).toBeGreaterThan(0);
   });
 
-  it("test: only the test account receives it, marked [TEST]", async () => {
+  it("test: Wave collects a notice for the test account only, reports delivery, communication settles", async () => {
     await setMode("test", ["ACC12345"]);
     await down(w.db, "1001");
     await run(w.db, 4);
-    const toResidents = captured.filter((m) => /^(list|account):/.test(m.address));
-    expect(toResidents.map((m) => m.address)).toEqual(["account:ACC12345"]);
+    expect(captured.filter((m) => /^(list|account):/.test(m.address))).toHaveLength(0); // never pushed
+    const { notices } = await claimNotices(w.db);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ account_code: "ACC12345", estate: null, test: true, kind: "initial_outage", notice_status: "open", incident_reference: "INC-2026-000001" });
+    expect(notices[0].subject.startsWith("[TEST] ")).toBe(true);
+    expect(notices[0].text).not.toMatch(/Dark Fibre|DFA/);
+    expect((await claimNotices(w.db)).notices).toHaveLength(0); // leased, not handed out twice
+    await reportResult(w.db, notices[0].delivery_id, { status: "delivered", counts: { sms: 1, email: 1, portal: 1 } });
+    const inc = await incidentFor(w.db, w.dwv.id);
+    const res = (await commsFor(w.db, inc.id)).filter((c) => c.audience === "resident");
+    expect(res[0].status).toBe("sent");
+    expect(inc.firstCommAt).not.toBeNull();
+  });
+
+  it("test: a notice not collected before the link is restored is cancelled, never handed to Wave", async () => {
+    await setMode("test", ["ACC12345"]);
+    await down(w.db, "1001");
+    await run(w.db, 4);
+    await up(w.db, "1001");
+    await run(w.db, 10);
+    const { notices } = await claimNotices(w.db);
+    expect(notices.every((n) => n.notice_status === "resolved")).toBe(true);
   });
 });

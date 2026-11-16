@@ -268,7 +268,7 @@ function Tokens() {
   const [d, setD] = useState<{ tokens: { name: string; source: string; value: string }[]; encryptionKeySource: string } | null>(null);
   const [show, setShow] = useState<string | null>(null);
   const load = () => api<any>("/api/admin/secrets").then(setD).catch(() => {});
-  const LABEL: Record<string, string> = { ingestNetxms: "NetXMS ingestion token (Authorization: Bearer …)", ingestGeneric: "Generic monitoring ingestion token", bounceWebhook: "Bounce processor token" };
+  const LABEL: Record<string, string> = { ingestNetxms: "NetXMS ingestion token (Authorization: Bearer …)", ingestGeneric: "Generic monitoring ingestion token", bounceWebhook: "Bounce processor token", waveApi: "Wave API key (give this to Wave)" };
   return (
     <Card title="Integration tokens" actions={!d && <Button size="sm" onClick={load}>Show</Button>}>
       {!d ? <div className="text-[13px] text-ink-muted">Tokens NetXMS and other systems use to send events to the portal. Viewing them is recorded in the audit log.</div> : (
