@@ -1,0 +1,13 @@
+{$PORTAL_DOMAIN} {
+  encode gzip
+  # Server-Sent Events must not be buffered.
+  @stream path /api/stream
+  reverse_proxy @stream web:3000 {
+    flush_interval -1
+  }
+  reverse_proxy web:3000
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    -Server
+  }
+}

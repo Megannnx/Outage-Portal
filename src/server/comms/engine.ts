@@ -19,7 +19,7 @@ import { clock, addMinutes } from "../lib/clock";
 import { fmtCustomerTime, fmtDateTime, fmtDuration } from "../lib/time";
 import { raiseAlert, resolveAlert, healthError, healthOk } from "../lib/alerts";
 import { getSettings, type Settings } from "../domain/settings";
-import { fallbackChain, REPAIR_STATUS_WORDING, type TechState } from "../domain/catalog";
+import { fallbackChain, kindDef, REPAIR_STATUS_WORDING, type TechState } from "../domain/catalog";
 import { MissingValueError, render, toHtml, type Vars } from "./render";
 import { enqueue, cancelJobs } from "../scheduler/jobs";
 import { addTimeline } from "../incidents/timeline";
@@ -194,7 +194,7 @@ export async function createCommunications(db: Tx, req: CommRequest): Promise<Cr
       await enqueue(db, { kind: "deliver_communication", runAt: clock.now(), incidentId: inc.id, dedupeKey: `deliver:${comm.id}:0`, payload: { communicationId: comm.id } });
     }
     await addTimeline(db, inc.id, "communication",
-      `${sel.kind === req.requestedKind ? "" : `"${req.requestedKind}" not possible with verified data — `}queued "${sel.kind}" to ${a.aud === "isp" ? `ISPs (${live} contact${live === 1 ? "" : "s"})` : `residents (${live} channel${live === 1 ? "" : "s"})`}`,
+      `${sel.kind === req.requestedKind ? "" : `"${kindDef(req.requestedKind).label}" not possible with verified data — `}Queued "${kindDef(sel.kind).label}" to ${a.aud === "isp" ? `ISPs (${live} contact${live === 1 ? "" : "s"})` : `residents (${live} channel${live === 1 ? "" : "s"})`}`,
       null, { communicationId: comm.id, templateVersionId: sel.version.id, tried: sel.tried });
     created.push({ id: comm.id, audience: a.aud, kind: sel.kind, requestedKind: req.requestedKind, deliveries: live });
   }
@@ -262,7 +262,7 @@ export async function deliverCommunication(db: DB, communicationId: string): Pro
       await tx.update(communicationDeliveries).set({ status: "cancelled", error: "Incident restored before send", updatedAt: clock.now() })
         .where(and(eq(communicationDeliveries.communicationId, c.id), inArray(communicationDeliveries.status, ["pending", "deferred", "sending"])));
       await tx.update(communications).set({ status: "cancelled", cancelledReason: "Link restored before this update was sent" }).where(eq(communications.id, c.id));
-      await addTimeline(tx, inc.id, "communication", `Cancelled "${c.kind}" to ${c.audience}: link restored before it was sent`);
+      await addTimeline(tx, inc.id, "communication", `Cancelled "${kindDef(c.kind).label}" to ${c.audience}: link restored before it was sent`);
       return null;
     }
     const now = clock.now();
@@ -293,12 +293,13 @@ export async function deliverCommunication(db: DB, communicationId: string): Pro
           meta: { incidentReference: work.inc.reference, siteCode: work.site.code, audience: work.c.audience, kind: work.c.kind },
         });
         status = r.status; providerId = r.providerMessageId ?? null;
-        await healthOk(db, `delivery:${d.channel}`, d.channel === "smtp" ? "SMTP relay" : "Client communications API");
+        // Capture mode never reports an integration as healthy — it is not a live connection.
+        if (!adapter.isCapture) await healthOk(db, `delivery:${d.channel}`, d.channel === "smtp" ? "SMTP relay" : "Client communications API");
       } catch (e) {
         const de = e instanceof DeliveryError ? e : new DeliveryError((e as Error).message, true);
         error = de.message;
         status = de.transient && d.attempts <= settings.deliveryRetryMinutes.length ? "deferred" : "failed";
-        await healthError(db, `delivery:${d.channel}`, d.channel === "smtp" ? "SMTP relay" : "Client communications API", de.message);
+        if (!adapter.isCapture) await healthError(db, `delivery:${d.channel}`, d.channel === "smtp" ? "SMTP relay" : "Client communications API", de.message);
       }
     }
     await db.transaction(async (tx) => {
@@ -327,7 +328,7 @@ export async function deliverCommunication(db: DB, communicationId: string): Pro
     await tx.update(communications).set({ status, sentAt: c.sentAt ?? (ok ? now : null) }).where(eq(communications.id, c.id));
     const label = c.audience === "isp" ? "ISPs" : "residents";
     await addTimeline(tx, c.incidentId, "delivery",
-      status === "sent" ? `"${c.kind}" accepted for ${ok} ${label} channel(s)` : `"${c.kind}" to ${label}: ${ok} accepted, ${failed} failed`,
+      status === "sent" ? `"${kindDef(c.kind).label}" to ${label}: ${ok} of ${ok} accepted for delivery` : `"${kindDef(c.kind).label}" to ${label}: ${ok} accepted, ${failed} failed`,
       null, { communicationId: c.id, status });
     if (failed) await raiseAlert(tx, `delivery_failed:${c.id}`, ok ? "warning" : "critical", `${work.inc.reference} "${c.kind}" to ${label}: ${failed} delivery(ies) failed`, c.incidentId);
     if (ok && c.purpose === "initial") {

@@ -1,0 +1,87 @@
+# ATEC Outage Portal — production stack.
+#   docker compose up -d                       → db, migrate (once), web, worker
+#   docker compose --profile tls up -d         → + Caddy with automatic HTTPS
+#   docker compose --profile bounces up -d     → + bounce-mailbox processor
+#   docker compose --profile backup up -d      → + nightly pg_dump with rotation
+name: atec-outage-portal
+
+x-app: &app
+  image: atec-outage-portal:${PORTAL_VERSION:-latest}
+  build: .
+  env_file: .env
+  restart: unless-stopped
+  depends_on:
+    db: { condition: service_healthy }
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: portal
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      TZ: UTC
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U portal -d portal"]
+      interval: 5s
+      retries: 20
+
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["npx", "tsx", "scripts/seed.ts"]
+
+  web:
+    <<: *app
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    ports: ["${WEB_BIND:-127.0.0.1}:3000:3000"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  worker:
+    <<: *app
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    command: ["npx", "tsx", "src/worker/main.ts"]
+    environment:
+      RUN_MIGRATIONS_ON_START: "false"
+    # Run 2 replicas for resilience: workers coordinate through Postgres.
+    deploy: { replicas: 2 }
+    stop_grace_period: 30s
+
+  bounces:
+    <<: *app
+    profiles: [bounces]
+    environment: { PORTAL_URL: "http://web:3000" }
+    command: ["sh", "-c", "while true; do npx tsx scripts/bounce-processor.ts || true; sleep 300; done"]
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: [tls]
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment: { PORTAL_DOMAIN: "${PORTAL_DOMAIN:-outages.example.com}" }
+    volumes: ["./deploy/Caddyfile:/etc/caddy/Caddyfile:ro", "caddy_data:/data"]
+    depends_on: [web]
+
+  backup:
+    image: postgres:16-alpine
+    profiles: [backup]
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+    volumes: ["./backups:/backups", "./deploy/backup.sh:/backup.sh:ro"]
+    entrypoint: ["sh", "-c", "while true; do sh /backup.sh; sleep 86400; done"]
+    depends_on: { db: { condition: service_healthy } }
+
+volumes:
+  pgdata:
+  caddy_data:

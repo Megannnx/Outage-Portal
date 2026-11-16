@@ -56,3 +56,28 @@ describe("audit hashing", () => {
     expect(canonicalJson({ b: 1, a: { d: 2, c: [3, { f: 1, e: 2 }] } })).toBe(canonicalJson({ a: { c: [3, { e: 2, f: 1 }], d: 2 }, b: 1 }));
   });
 });
+
+describe("bounce classification", () => {
+  it("matches our Message-ID and detects hard bounces", async () => {
+    process.env.SMTP_MESSAGE_ID_DOMAIN = "outages.atec.local";
+    const { classify } = await import("../scripts/bounce-processor");
+    const dsn = "Action: failed\nStatus: 5.1.1\nDiagnostic-Code: smtp; 550 5.1.1 User unknown\n\nMessage-ID: <0b9e0e3c-2f7a-4c1e-9a55-0d1f2a3b4c5d@outages.atec.local>";
+    expect(classify(dsn)).toMatchObject({ messageId: "<0b9e0e3c-2f7a-4c1e-9a55-0d1f2a3b4c5d@outages.atec.local>", hard: true, status: "bounced" });
+    expect(classify("Action: delayed\nStatus: 4.4.1\nMessage-ID: <0b9e0e3c-2f7a-4c1e-9a55-0d1f2a3b4c5d@outages.atec.local>").status).toBe("deferred");
+    expect(classify("random email").messageId).toBeNull();
+  });
+});
+
+describe("ingestion auth", () => {
+  it("rejects missing/wrong bearer tokens and enforces IP allow-list", async () => {
+    const { requireBearer } = await import("@/server/ingestion/auth");
+    process.env.INGEST_TOKEN_NETXMS = "s3cret-token";
+    const req = (h: Record<string, string>) => new Request("http://x/api/ingest/netxms", { method: "POST", headers: h });
+    expect(() => requireBearer(req({}), "INGEST_TOKEN_NETXMS")).toThrow(/Invalid token/);
+    expect(() => requireBearer(req({ authorization: "Bearer nope" }), "INGEST_TOKEN_NETXMS")).toThrow(/Invalid token/);
+    expect(() => requireBearer(req({ authorization: "Bearer s3cret-token" }), "INGEST_TOKEN_NETXMS")).not.toThrow();
+    process.env.INGEST_ALLOWED_IPS = "10.0.0.5";
+    expect(() => requireBearer(req({ authorization: "Bearer s3cret-token", "x-forwarded-for": "8.8.8.8" }), "INGEST_TOKEN_NETXMS")).toThrow(/not allowed/);
+    delete process.env.INGEST_ALLOWED_IPS;
+  });
+});

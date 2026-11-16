@@ -156,4 +156,20 @@ export async function runHealthSweep(db: DB) {
   if ((pendingDeliveries[0]?.n ?? 0) > 0) await raiseAlert(db, "delivery_stuck", "critical", `${pendingDeliveries[0].n} delivery(ies) stuck for over 15 minutes`);
   else await resolveAlert(db, "delivery_stuck");
   void alerts;
+  await runRetention(db);
+}
+
+/**
+ * POPIA-aware retention: keep operational history for reporting, drop what is no
+ * longer needed. Incident, communication and audit records are retained (business
+ * records); raw payloads, sessions and finished jobs are not.
+ */
+export async function runRetention(db: DB) {
+  const now = clock.now();
+  const days = (n: number) => addMinutes(now, -n * 1440).toISOString();
+  const raw = Number(process.env.RETENTION_RAW_EVENT_DAYS ?? 180);
+  await db.execute(sql`update monitoring_events set raw = '{}'::jsonb where received_at < ${days(raw)} and raw <> '{}'::jsonb`);
+  await db.execute(sql`delete from sessions where expires_at < ${days(30)} or revoked_at < ${days(30)}`);
+  await db.execute(sql`delete from jobs where status in ('done','cancelled') and completed_at < ${days(Number(process.env.RETENTION_JOB_DAYS ?? 30))}`);
+  await db.execute(sql`update delivery_events set raw = null where at < ${days(raw)} and raw is not null`);
 }

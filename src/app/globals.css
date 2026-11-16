@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ATEC tokens — dark default, light via data-theme="light" (same palette as the ATEC Training Portal). */
+:root {
+  --background: #0b0b0c; --background-alt: #111111; --surface: #161618; --surface-2: #1c1c1f; --line: #2a2a2e;
+  --primary: #d71920; --primary-hover: #b4151b; --primary-bright: #ef233c;
+  --ink: #f5f5f5; --ink-secondary: #a1a1aa; --ink-muted: #71717a;
+  --success: #22c55e; --warning: #f59e0b; --info: #a1a1aa;
+  --red-tint-50: #241416; --red-tint-100: #2e181b; --red-tint-200: #45272b;
+  --green-tint-50: #10241a; --green-tint-200: #1f3d2c;
+  --amber-tint-50: #241f13; --amber-tint-200: #4a3d1f;
+  --info-tint: #1c1c1f;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --background: #f6f6f7; --background-alt: #ffffff; --surface: #ffffff; --surface-2: #f1f1f4; --line: #e1e1e6;
+  --primary: #d71920; --primary-hover: #b4151b; --primary-bright: #c0131f;
+  --ink: #18181b; --ink-secondary: #52525b; --ink-muted: #71717a;
+  --success: #15803d; --warning: #b45309; --info: #52525b;
+  --red-tint-50: #fef2f2; --red-tint-100: #fee2e2; --red-tint-200: #fecaca;
+  --green-tint-50: #f0fdf4; --green-tint-200: #bbf7d0;
+  --amber-tint-50: #fffbeb; --amber-tint-200: #fde68a;
+  --info-tint: #f1f1f4;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+body { color: var(--ink); background: var(--background); font-feature-settings: "tnum" 1, "cv11" 1; -webkit-font-smoothing: antialiased; }
+* { border-color: var(--line); }
+::selection { background: var(--primary); color: #fff; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; border: 2px solid var(--background); }
+:focus-visible { outline: 2px solid var(--primary-bright); outline-offset: 2px; border-radius: 6px; }
+.tabular { font-variant-numeric: tabular-nums; }
+@keyframes pulse-red { 0%,100% { box-shadow: 0 0 0 0 rgba(215,25,32,.55); } 50% { box-shadow: 0 0 0 6px rgba(215,25,32,0); } }
+.pulse-red { animation: pulse-red 1.8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .pulse-red { animation: none; } }
+@media print { .no-print { display: none !important; } body { background: #fff; color: #000; } }

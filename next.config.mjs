@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
   poweredByHeader: false,
   experimental: { serverComponentsExternalPackages: ["pg", "nodemailer", "exceljs", "pdfkit", "bcryptjs"] },
   async headers() {
