@@ -441,3 +441,17 @@ describe("Edge cases", () => {
     expect(r.result).toBe("processed");
   });
 });
+
+it("Audit log is append-only and its hash chain verifies", async () => {
+  const { verifyAuditChain } = await import("@/server/audit/verify");
+  const ww = w;
+  await down(ww.db, "1001");
+  await run(ww.db, 3);
+  const inc = await incidentFor(ww.db, ww.dwv.id);
+  await confirmCause(ww.db, ww.desk, { incidentId: inc.id, causeKey: "power_area" });
+  await confirmCause(ww.db, ww.desk, { incidentId: inc.id, causeKey: "power_ok" });
+  expect((await verifyAuditChain(ww.db)).ok).toBe(true);
+  const { sql } = await import("drizzle-orm");
+  await expect(ww.db.execute(sql`update audit_logs set action = 'x'`)).rejects.toThrow();
+  await expect(ww.db.execute(sql`update technical_updates set original_text = 'x'`)).resolves.toBeDefined(); // no rows yet → no-op
+});

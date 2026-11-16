@@ -1,0 +1,20 @@
+import { route } from "@/server/api";
+import { getDb } from "@/server/db/client";
+import { buildReport, trend } from "@/server/reports/metrics";
+import { toCsv, toPdf, toXlsx } from "@/server/reports/export";
+import { parseReportQuery } from "@/server/reports/query";
+import { audit } from "@/server/audit/audit";
+import { fmtDateTime } from "@/server/lib/time";
+export const dynamic = "force-dynamic";
+export const GET = route({ perm: "reports.view" }, async ({ req, actor }) => {
+  const db = getDb();
+  const url = new URL(req.url);
+  const format = url.searchParams.get("format") ?? "pdf";
+  const { filters, prevFilters, label } = parseReportQuery(url);
+  const [r, prev, t] = await Promise.all([buildReport(db, filters), buildReport(db, prevFilters), trend(db, filters.to)]);
+  await audit(db, actor, "report.exported", "report", label, null, { format, from: fmtDateTime(filters.from), to: fmtDateTime(filters.to) });
+  const name = `ATEC-outage-report-${label}`;
+  if (format === "csv") return new Response(toCsv(r), { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${name}.csv"` } });
+  if (format === "xlsx") return new Response(new Uint8Array(await toXlsx(r, t, prev)), { headers: { "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "content-disposition": `attachment; filename="${name}.xlsx"` } });
+  return new Response(new Uint8Array(await toPdf(r, t, prev, `Outage management report — ${label}`)), { headers: { "content-type": "application/pdf", "content-disposition": `attachment; filename="${name}.pdf"` } });
+});

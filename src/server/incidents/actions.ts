@@ -430,3 +430,32 @@ export async function decideCorrelation(db: DB, actor: Actor, input: { suggestio
     return { groupId };
   });
 }
+
+// ───────────────────────────── Previews for confirmation dialogs ─────────────────────────────
+
+/** Exactly what residents would receive if this cause were confirmed now. */
+export async function previewCause(db: DB, incidentId: string, causeKey: string) {
+  const [inc] = await db.select().from(incidents).where(eq(incidents.id, incidentId));
+  if (!inc) throw notFound();
+  const [cause] = await db.select().from(causeOptions).where(eq(causeOptions.key, causeKey));
+  if (!cause) throw badRequest("Unknown cause");
+  const [site] = await db.select().from(sites).where(eq(sites.id, inc.siteId));
+  const settings = await getSettings(db);
+  const hypothetical = { ...inc, causeKey } as Incident;
+  const vars = await buildVars(db, hypothetical, site, settings, "cause");
+  const sel = await selectAndRender(db, cause.templateKind, "resident", vars);
+  return {
+    cause: { key: cause.key, label: cause.label, requiresDispatch: cause.requiresDispatch, assignsTechnical: cause.assignsTechnical },
+    willSendNow: inc.phase === "active", phase: inc.phase, siteName: site.name,
+    kind: sel.kind, subject: sel.subject, body: sel.body,
+  };
+}
+
+export async function previewRfo(db: DB, incidentId: string, rfoText: string) {
+  const [inc] = await db.select().from(incidents).where(eq(incidents.id, incidentId));
+  if (!inc) throw notFound();
+  const [site] = await db.select().from(sites).where(eq(sites.id, inc.siteId));
+  const vars = await buildVars(db, inc, site, await getSettings(db), "final", { rfo: rfoText.trim() || undefined });
+  const sel = await selectAndRender(db, "final_rfo", "resident", vars);
+  return { kind: sel.kind, subject: sel.subject, body: sel.body, tried: sel.tried };
+}

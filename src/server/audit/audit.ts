@@ -1,7 +1,7 @@
 import { desc, sql } from "drizzle-orm";
 import type { Tx } from "../db/client";
 import { auditLogs } from "../db/schema";
-import { sha256 } from "../lib/crypto";
+import { sha256, canonicalJson } from "../lib/crypto";
 import { clock } from "../lib/clock";
 
 export interface Actor { id: string | null; label: string; ip?: string | null }
@@ -15,11 +15,11 @@ export async function audit(db: Tx, actor: Actor, action: string, entityType: st
   await db.execute(sql`select pg_advisory_xact_lock(7210001)`);
   const [prev] = await db.select({ hash: auditLogs.hash }).from(auditLogs).orderBy(desc(auditLogs.id)).limit(1);
   const prevHash = prev?.hash ?? "genesis";
-  const at = clock.now();
-  const payload = JSON.stringify({ at: at.toISOString(), actor: actor.id, action, entityType, entityId, before: before ?? null, after: after ?? null });
+  const at = new Date(Math.floor(clock.now().getTime()));
+  const payload = canonicalJson({ at: at.toISOString(), actor: actor.id, action, entityType, entityId, before: before ?? null, after: after ?? null });
   await db.insert(auditLogs).values({
     at, actorId: actor.id, actorLabel: actor.label, action, entityType, entityId,
-    before: (before ?? null) as any, after: (after ?? null) as any, ip: actor.ip ?? null,
+    before: before == null ? null : JSON.parse(canonicalJson(before)), after: after == null ? null : JSON.parse(canonicalJson(after)), ip: actor.ip ?? null,
     prevHash, hash: sha256(prevHash + payload),
   });
 }

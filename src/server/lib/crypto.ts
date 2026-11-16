@@ -29,3 +29,14 @@ export function safeEqual(a: string, b: string): boolean {
 export function hmacSha256(secret: string, body: string): string {
   return crypto.createHmac("sha256", secret).update(body).digest("hex");
 }
+
+/** Deterministic JSON (sorted keys) so hashes survive a round-trip through jsonb. */
+export function canonicalJson(v: unknown): string {
+  const norm = (x: unknown): unknown => {
+    if (x instanceof Date) return x.toISOString();
+    if (Array.isArray(x)) return x.map(norm);
+    if (x && typeof x === "object") return Object.fromEntries(Object.keys(x as object).sort().filter((k) => (x as any)[k] !== undefined).map((k) => [k, norm((x as any)[k])]));
+    return x;
+  };
+  return JSON.stringify(norm(v));
+}

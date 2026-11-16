@@ -49,3 +49,10 @@ describe("extraction rules", () => {
     expect(e.eta?.note).toMatch(/tomorrow/);
   });
 });
+
+import { canonicalJson } from "@/server/lib/crypto";
+describe("audit hashing", () => {
+  it("is stable across key order", () => {
+    expect(canonicalJson({ b: 1, a: { d: 2, c: [3, { f: 1, e: 2 }] } })).toBe(canonicalJson({ a: { c: [3, { e: 2, f: 1 }], d: 2 }, b: 1 }));
+  });
+});
