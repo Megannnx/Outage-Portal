@@ -122,7 +122,8 @@ describe("Scenario D — power confirmed → backhaul update", () => {
     expect(pv.facts).toMatchObject({ providerId: w.dfa.id, faultType: "fibre_break", technicians: "dispatched" });
     expect(pv.plan.requestedKind).toBe("eta_available");
     expect(pv.preview[0].body).toContain("16:30 today");
-    expect(pv.preview[0].body).toContain("Dark Fibre Africa, has confirmed a fibre break on their network");
+    expect(pv.preview[0].body).toContain("the cause is a fibre break");
+    expect(pv.preview[0].body).not.toMatch(/Dark Fibre Africa|DFA|backhaul/i);
 
     const before = captured.length;
     await submitTechnicalUpdate(w.db, w.tech, { incidentId: inc.id, text, facts: pv.facts });
@@ -191,7 +192,8 @@ describe("Scenario H — RFO received", () => {
     await up(w.db, "1001");
     await run(w.db, 6);
     let inc = await incidentFor(w.db, w.dwv.id);
-    await submitRfo(w.db, w.tech, { incidentId: inc.id, rfoText: "A third-party contractor damaged the fibre route on Main Road; DFA re-spliced the cable." });
+    await expect(submitRfo(w.db, w.tech, { incidentId: inc.id, rfoText: "A third-party contractor damaged the fibre route on Main Road; DFA re-spliced the cable." })).rejects.toThrow(/kept private/);
+    await submitRfo(w.db, w.tech, { incidentId: inc.id, rfoText: "A third-party contractor damaged the fibre route on Main Road; the cable was re-spliced." });
     inc = await incidentFor(w.db, w.dwv.id);
     expect(inc.phase).toBe("awaiting_rfo"); // not resolved until the final message is out
     await tick(w.db);
@@ -199,6 +201,6 @@ describe("Scenario H — RFO received", () => {
     expect(inc.phase).toBe("resolved");
     expect(inc.resolvedAt).not.toBeNull();
     const fin = captured.find((m) => m.meta.kind === "final_rfo")!;
-    expect(fin.text).toContain("re-spliced the cable");
+    expect(fin.text).toContain("the cable was re-spliced");
   });
 });

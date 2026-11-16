@@ -26,7 +26,9 @@ You approve the exact wording customers receive, keep sites/ISPs/contacts accura
 
 ## Writing templates
 
-Placeholders insert **verified** facts: `{{site_name}} {{estate_name}} {{incident_reference}} {{outage_start_time}} {{confirmed_cause}} {{provider_name}} {{fault_description}} {{repair_status}} {{eta}} {{next_update_time}} {{rfo}} {{support_contact}} {{restored_time}} {{downtime}} {{affected_sites}}`.
+**Backhaul providers are private.** There is no provider placeholder, and the portal refuses any template, cause/fault wording or RFO that names a backhaul provider (name, display name or alias) or Connexifi. Provider details stay internal: sites, Technical panel, internal alerts and reports.
+
+Placeholders insert **verified** facts: `{{site_name}} {{estate_name}} {{incident_reference}} {{outage_start_time}} {{confirmed_cause}} {{fault_description}} {{repair_status}} {{eta}} {{next_update_time}} {{rfo}} {{support_contact}} {{restored_time}} {{downtime}} {{affected_sites}}`.
 
 * `{{eta}}` on its own means "this message **requires** a verified ETA". If none exists, the engine automatically uses the next template in the chain (e.g. *ETA unavailable*). That is how the portal guarantees it never invents an ETA.
 * `{{#eta}}The estimated restoration time is {{eta}}.{{/eta}}` — shown only when an ETA is verified.

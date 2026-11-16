@@ -31,6 +31,7 @@ import { queueInternal, internalAddresses } from "../comms/internal";
 import { fmtDateTime, fmtDuration } from "../lib/time";
 import { randomToken, sha256 } from "../lib/crypto";
 import { resolveAlert } from "../lib/alerts";
+import { assertNoPrivateTerms } from "../comms/privacy";
 
 type Incident = typeof incidents.$inferSelect;
 
@@ -363,6 +364,7 @@ export const RfoSchema = z.object({
 
 export async function submitRfo(db: DB, actor: Actor, input: { incidentId: string; expectedVersion?: number } & z.input<typeof RfoSchema>) {
   const r = RfoSchema.parse(input);
+  await assertNoPrivateTerms(db, r.rfoText, "The reason for outage");
   return db.transaction(async (tx) => {
     const inc = await lockIncident(tx, input.incidentId, input.expectedVersion);
     if (inc.phase !== "awaiting_rfo") throw badRequest("An RFO can only be entered once the link is restored and the incident is awaiting RFO.");
@@ -455,6 +457,7 @@ export async function previewRfo(db: DB, incidentId: string, rfoText: string) {
   const [inc] = await db.select().from(incidents).where(eq(incidents.id, incidentId));
   if (!inc) throw notFound();
   const [site] = await db.select().from(sites).where(eq(sites.id, inc.siteId));
+  if (rfoText.trim()) await assertNoPrivateTerms(db, rfoText, "The reason for outage");
   const vars = await buildVars(db, inc, site, await getSettings(db), "final", { rfo: rfoText.trim() || undefined });
   const sel = await selectAndRender(db, "final_rfo", "resident", vars);
   return { kind: sel.kind, subject: sel.subject, body: sel.body, tried: sel.tried };

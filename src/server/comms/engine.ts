@@ -73,7 +73,6 @@ export async function buildVars(db: Tx, inc: Incident, site: Site, settings: Set
     incident_reference: inc.reference,
     outage_start_time: fmtDateTime(inc.outageStartedAt),
     confirmed_cause: cause,
-    provider_name: ts.providerName ?? undefined,
     fault_description: ts.faultDescription ?? undefined,
     repair_status: ts.repairStatus ? REPAIR_STATUS_WORDING[ts.repairStatus] : undefined,
     eta,

@@ -180,7 +180,7 @@ export function Policies() {
         columns={[{ label: "Fault", render: (r: any) => <>{r.label} {active(r)}<div className="text-2xs text-ink-muted">“{r.publicDescription}”</div></> }, { label: "Phrases", render: (r: any) => <span className="text-2xs">{r.keywords.join(", ")}</span> }]} />
       <Crud resource="providers" title="Backhaul providers"
         fields={[
-          { key: "name", label: "Name" }, { key: "publicName", label: "Name used in messages ({{provider_name}})", warn: "Inserted verbatim into customer messages." },
+          { key: "name", label: "Name" }, { key: "publicName", label: "Display name (internal only)", warn: "Never sent to clients — backhaul providers are kept private." },
           { key: "aliases", label: "Other spellings (for extraction)", type: "tags" }, { key: "supportEmail", label: "Support email", nullable: true }, { key: "supportPhone", label: "Support phone", nullable: true },
           { key: "slaRestoreMinutes", label: "Restore SLA (minutes)", type: "number", nullable: true }, { key: "active", label: "Active", type: "bool" },
         ]}

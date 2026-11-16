@@ -11,10 +11,11 @@ import { badRequest, conflict, forbidden, notFound } from "../lib/errors";
 import { audit, type Actor } from "../audit/audit";
 import { checkTemplate, render, type Vars } from "./render";
 import { KIND_MAP } from "../domain/catalog";
+import { assertNoPrivateTerms } from "./privacy";
 
 export const SAMPLE_VARS: Vars = {
   site_name: "Dowerview", estate_name: "Dowerview Estate", incident_reference: "INC-2026-000123",
-  outage_start_time: "16 Nov 2026 08:00", confirmed_cause: "an electricity outage affecting the area", provider_name: "Dark Fibre Africa",
+  outage_start_time: "16 Nov 2026 08:00", confirmed_cause: "an electricity outage affecting the area",
   fault_description: "a fibre break on their network", repair_status: "repairs are in progress", eta: "16:30 today",
   next_update_time: "10:03 today", rfo: "A contractor damaged the fibre route on Main Road. The cable was re-spliced and tested.",
   support_contact: "ATEC Support: support@atec.co.za", restored_time: "16 Nov 2026 13:35", downtime: "5h 35m", affected_sites: "Dowerview, Hazeldean",
@@ -65,6 +66,7 @@ export async function submitForApproval(db: DB, actor: Actor, versionId: string)
   if (v.status !== "draft") throw badRequest("Only drafts can be submitted");
   const check = checkTemplate(t.kind, v.subject, v.body);
   if (!check.ok) throw badRequest(check.errors.join("; "), check);
+  await assertNoPrivateTerms(db, `${v.subject}\n${v.body}`, "This wording");
   await db.update(templateVersions).set({ status: "pending_approval", submittedAt: clock.now() }).where(eq(templateVersions.id, v.id));
   await audit(db, actor, "template.submitted", "template_version", v.id);
 }
@@ -76,6 +78,7 @@ export async function approveVersion(db: DB, actor: Actor, versionId: string, co
     throw forbidden("You cannot approve your own wording — another administrator must approve it");
   const check = checkTemplate(t.kind, v.subject, v.body);
   if (!check.ok) throw badRequest(check.errors.join("; "), check);
+  await assertNoPrivateTerms(db, `${v.subject}\n${v.body}`, "This wording");
   await db.transaction(async (tx) => {
     const now = clock.now();
     await tx.update(templateVersions).set({ status: "retired", retiredAt: now }).where(and(eq(templateVersions.templateId, t.id), eq(templateVersions.status, "published")));
@@ -111,7 +114,7 @@ export function previewWording(kind: string, subject: string, body: string, vars
   const check = checkTemplate(kind, subject, body);
   if (!check.ok) return { ok: false as const, errors: check.errors };
   try {
-    return { ok: true as const, subject: render(subject, vars), body: render(body, vars), withoutOptional: render(body, { ...vars, eta: undefined, provider_name: undefined, fault_description: undefined, repair_status: undefined, ...(kind === "eta_available" || kind === "eta_changed" ? { eta: vars.eta } : {}) }) };
+    return { ok: true as const, subject: render(subject, vars), body: render(body, vars), withoutOptional: render(body, { ...vars, eta: undefined, fault_description: undefined, repair_status: undefined, ...(kind === "eta_available" || kind === "eta_changed" ? { eta: vars.eta } : {}) }) };
   } catch (e) { return { ok: false as const, errors: [(e as Error).message] }; }
 }
 

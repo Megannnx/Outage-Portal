@@ -12,6 +12,7 @@ import { badRequest, conflict, notFound } from "../lib/errors";
 import { hashPassword } from "../auth/session";
 import { TRIGGERS } from "../escalations/engine";
 import { KIND_MAP } from "../domain/catalog";
+import { assertNoPrivateTerms } from "../comms/privacy";
 
 const kindRef = z.string().refine((k) => KIND_MAP.has(k) || /^custom_[a-z0-9_]{3,40}$/.test(k), "Unknown template kind");
 const uuid = z.string().uuid();
@@ -111,6 +112,7 @@ export async function createResource(db: DB, actor: Actor, name: string, body: u
   const r = RESOURCES[name];
   if (!r) throw notFound("Unknown resource");
   let input = r.schema.parse(body);
+  if (typeof (input as any).publicDescription === "string") await assertNoPrivateTerms(db, (input as any).publicDescription, "The client wording");
   if (r.beforeWrite) input = await r.beforeWrite(db, input);
   try {
     const [row] = (await db.insert(r.table).values(input).returning()) as any[];
@@ -137,6 +139,7 @@ export async function updateResource(db: DB, actor: Actor, name: string, id: str
   let input: any = r.schema.partial().parse(body);
   for (const k of Object.keys(input)) if (input[k] === undefined) delete input[k];
   if (r.idCol === "key") delete input.key; // keys are referenced by history
+  if (typeof input.publicDescription === "string") await assertNoPrivateTerms(db, input.publicDescription, "The client wording");
   if (r.beforeWrite) input = await r.beforeWrite(db, input, existing);
   const [row] = (await db.update(r.table).set(input).where(idWhere(r, id)).returning()) as any[];
   await audit(db, actor, `${name}.updated`, name, id, redact(existing), redact(row));

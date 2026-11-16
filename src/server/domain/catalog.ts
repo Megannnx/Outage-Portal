@@ -10,7 +10,6 @@ export const PLACEHOLDERS = {
   incident_reference: "Incident number, e.g. INC-2026-000123",
   outage_start_time: "When the outage started (local time)",
   confirmed_cause: "Admin-approved wording for the confirmed cause",
-  provider_name: "Backhaul provider public name",
   fault_description: "Admin-approved wording for the verified fault",
   repair_status: "Admin-approved wording for the verified repair status",
   eta: "Verified estimated restoration time",

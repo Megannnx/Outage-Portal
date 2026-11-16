@@ -81,3 +81,24 @@ describe("ingestion auth", () => {
     delete process.env.INGEST_ALLOWED_IPS;
   });
 });
+
+import { findPrivateTerm } from "@/server/comms/privacy";
+import { TEMPLATE_ROWS, CAUSE_ROWS, FAULT_ROWS } from "@/server/domain/seed-data";
+
+describe("backhaul privacy", () => {
+  const terms = ["Dark Fibre Africa", "DFA", "MetroFibre Networx", "MFN", "Connexifi"];
+  it("detects provider names and aliases as whole words, case-insensitive", () => {
+    expect(findPrivateTerm("A fibre break on the dfa route", terms)).toBe("DFA");
+    expect(findPrivateTerm("Restored by MetroFibre Networx.", terms)).toBe("MetroFibre Networx");
+    expect(findPrivateTerm("Via connexifi", terms)).toBe("Connexifi");
+    expect(findPrivateTerm("A fibre break was repaired", terms)).toBeNull();
+    expect(findPrivateTerm("The DFAX unit", terms)).toBeNull();
+  });
+  it("the provider placeholder no longer exists", () => {
+    expect(checkTemplate("backhaul_failure", "x", "Our provider {{provider_name}}").ok).toBe(false);
+  });
+  it("default client wording never mentions backhaul or providers", () => {
+    for (const t of TEMPLATE_ROWS) expect(`${t.subject} ${t.body}`).not.toMatch(/backhaul|provider_name|their network/i);
+    for (const c of [...CAUSE_ROWS, ...FAULT_ROWS]) expect(c.publicDescription).not.toMatch(/backhaul|provider|their /i);
+  });
+});
