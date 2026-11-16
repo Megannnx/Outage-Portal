@@ -24,7 +24,9 @@ export const clientApiAdapter: DeliveryAdapter = {
     return null;
   },
   async send(msg: OutboundMessage): Promise<SendResult> {
-    const ref = msg.address.startsWith("list:") ? msg.address.slice(5) : msg.address;
+    // list:<ref> = a site's resident distribution list; account:<code> = one client account (test mode).
+    const isAccount = msg.address.startsWith("account:");
+    const ref = msg.address.replace(/^(list|account):/, "");
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), Number(process.env.CLIENT_API_TIMEOUT_MS ?? 15000));
     let res: Response;
@@ -38,8 +40,8 @@ export const clientApiAdapter: DeliveryAdapter = {
           "idempotency-key": msg.deliveryId,
         },
         body: JSON.stringify({
-          distribution_ref: ref,
-          subject: msg.subject,
+          ...(isAccount ? { account_code: ref } : { distribution_ref: ref }),
+          subject: isAccount ? `[TEST] ${msg.subject}` : msg.subject,
           text: msg.text,
           html: msg.html,
           incident_reference: msg.meta.incidentReference,

@@ -466,3 +466,30 @@ it("Headend IP identifies the site when no object ID is registered (interface ev
   expect(r.result).toBe("processed");
   expect((await incidentFor(w.db, w.hzd.id)).phase).toBe("validating");
 });
+
+describe("Resident safety lock", () => {
+  const setMode = async (mode: string, accounts: string[] = []) => {
+    await w.db.delete(s.settings).where(eq(s.settings.key, "residentDelivery"));
+    await w.db.insert(s.settings).values([{ key: "residentDelivery", value: mode }, { key: "residentTestAccounts", value: accounts }]);
+  };
+
+  it("off: resident message is prepared but nothing reaches residents; ISPs still notified", async () => {
+    await setMode("off");
+    await down(w.db, "1001");
+    await run(w.db, 4);
+    const inc = await incidentFor(w.db, w.dwv.id);
+    const res = (await commsFor(w.db, inc.id)).filter((c) => c.audience === "resident");
+    expect(res).toHaveLength(1);
+    expect(res[0].status).toBe("cancelled");
+    expect(captured.filter((m) => /^(list|account):/.test(m.address))).toHaveLength(0);
+    expect(captured.filter((m) => m.address.includes("@")).length).toBeGreaterThan(0);
+  });
+
+  it("test: only the test account receives it, marked [TEST]", async () => {
+    await setMode("test", ["ACC12345"]);
+    await down(w.db, "1001");
+    await run(w.db, 4);
+    const toResidents = captured.filter((m) => /^(list|account):/.test(m.address));
+    expect(toResidents.map((m) => m.address)).toEqual(["account:ACC12345"]);
+  });
+});

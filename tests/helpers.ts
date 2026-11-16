@@ -72,6 +72,8 @@ export async function setup(): Promise<World> {
     { audience: "isp", ispId: ib.id, email: "noc@bravo.test" },
     { audience: "internal", team: "NOC", email: "noc-team@atec.test" },
   ]);
+  // Scenario tests exercise real resident delivery; the safety lock itself is tested separately.
+  await db.insert(s.settings).values({ key: "residentDelivery", value: "live" });
   return {
     db, dfa, dwv, hzd, mdw, ispA: ia.id, ispB: ib.id,
     admin: { id: a.id, label: a.name }, desk: { id: d.id, label: d.name }, tech: { id: t.id, label: t.name },

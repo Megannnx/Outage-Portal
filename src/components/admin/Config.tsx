@@ -135,6 +135,26 @@ export function Policies() {
             {num("businessHoursStart", "Business hours start (hour)")}{num("businessHoursEnd", "Business hours end (hour)")}
             {num("bounceInvalidThreshold", "Hard bounces before a contact is marked invalid")}
             {num("monitoringSilenceAlertMinutes", "Alert if NetXMS is silent for (minutes)", "Set up the NetXMS heartbeat so quiet periods don't false-alarm.")}
+            <div className="sm:col-span-full rounded-md border border-primary/40 bg-primary/5 p-3">
+              <div className="mb-2 text-[13px] font-semibold">Resident sending (safety lock)</div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Who receives resident messages">
+                  <select className={inputCls} value={s.residentDelivery} onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === "live" && prompt("Residents will start receiving real outage messages once you save. Type LIVE to confirm.") !== "LIVE") return;
+                    setS({ ...s, residentDelivery: v });
+                  }}>
+                    <option value="off">Off — nothing is sent to residents</option>
+                    <option value="test">Test — only the test account(s) below</option>
+                    <option value="live">Live — all residents of the affected site</option>
+                  </select>
+                </Field>
+                <Field label="Test account code(s)" hint="Comma-separated client account codes that receive resident messages in Test mode">
+                  <input className={inputCls} value={(s.residentTestAccounts ?? []).join(", ")} onChange={(e) => setS({ ...s, residentTestAccounts: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} />
+                </Field>
+              </div>
+              <div className="mt-1 text-2xs text-ink-muted">While Off or Test, resident messages are still prepared and shown on each incident, so the wording can be checked — they are just not delivered to real residents.</div>
+            </div>
             <Field label="Support contact — FSN sites ({{support_contact}})"><input className={inputCls} value={s.supportContactByNetwork?.FSN ?? ""} onChange={(e) => setS({ ...s, supportContactByNetwork: { ...s.supportContactByNetwork, FSN: e.target.value } })} /></Field>
             <Field label="Support contact — FMAS sites ({{support_contact}})"><input className={inputCls} value={s.supportContactByNetwork?.FMAS ?? ""} onChange={(e) => setS({ ...s, supportContactByNetwork: { ...s.supportContactByNetwork, FMAS: e.target.value } })} /></Field>
             <Field label="Support contact — sites with no network set"><input className={inputCls} value={s.supportContact} onChange={(e) => setS({ ...s, supportContact: e.target.value })} /></Field>

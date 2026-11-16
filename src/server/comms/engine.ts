@@ -177,7 +177,15 @@ export async function createCommunications(db: Tx, req: CommRequest): Promise<Cr
     }).onConflictDoNothing({ target: communications.idempotencyKey }).returning();
     if (!comm) continue; // already created by an earlier attempt — idempotent
 
-    const planned = await plan(db, a.aud, a.siteIds);
+    let planned = await plan(db, a.aud, a.siteIds);
+    // Resident safety lock: until go-live, real residents are never contacted.
+    let lockedReason: string | null = null;
+    if (a.aud === "resident" && settings.residentDelivery !== "live") {
+      lockedReason = settings.residentDelivery === "test" ? "Resident test mode — real residents are not contacted" : "Resident sending is locked until go-live (Admin › Settings)";
+      planned = planned.map((p) => ({ ...p, suppressed: p.suppressed ?? lockedReason }));
+      if (settings.residentDelivery === "test")
+        for (const code of settings.residentTestAccounts) planned.push({ channel: "client_api", address: `account:${code}`, recipientId: null, ispId: null, suppressed: null });
+    }
     if (planned.length) {
       await db.insert(communicationDeliveries).values(planned.map((p) => ({
         communicationId: comm.id, recipientId: p.recipientId, ispId: p.ispId, channel: p.channel, address: p.address,
@@ -185,7 +193,9 @@ export async function createCommunications(db: Tx, req: CommRequest): Promise<Cr
       })));
     }
     const live = planned.filter((p) => !p.suppressed).length;
-    if (!live) {
+    if (!live && lockedReason) {
+      await db.update(communications).set({ status: "cancelled", cancelledReason: lockedReason }).where(eq(communications.id, comm.id));
+    } else if (!live) {
       await db.update(communications).set({ status: "no_recipients" }).where(eq(communications.id, comm.id));
       await raiseAlert(db, `no_recipients:${site.id}:${a.aud}`, "warning", `${site.name}: no active ${a.aud === "isp" ? "ISP contacts" : "resident distribution"} configured — "${sel.kind}" was not delivered`, inc.id);
     } else {
@@ -193,7 +203,7 @@ export async function createCommunications(db: Tx, req: CommRequest): Promise<Cr
       await enqueue(db, { kind: "deliver_communication", runAt: clock.now(), incidentId: inc.id, dedupeKey: `deliver:${comm.id}:0`, payload: { communicationId: comm.id } });
     }
     await addTimeline(db, inc.id, "communication",
-      `${sel.kind === req.requestedKind ? "" : `"${kindDef(req.requestedKind).label}" not possible with verified data — `}Queued "${kindDef(sel.kind).label}" to ${a.aud === "isp" ? `ISPs (${live} contact${live === 1 ? "" : "s"})` : `residents (${live} channel${live === 1 ? "" : "s"})`}`,
+      `${sel.kind === req.requestedKind ? "" : `"${kindDef(req.requestedKind).label}" not possible with verified data — `}${lockedReason && !live ? `Prepared "${kindDef(sel.kind).label}" for residents — not sent (${lockedReason})` : `Queued "${kindDef(sel.kind).label}" to ${a.aud === "isp" ? `ISPs (${live} contact${live === 1 ? "" : "s"})` : `residents (${live} ${lockedReason ? "test account" : "channel"}${live === 1 ? "" : "s"})`}`}`,
       null, { communicationId: comm.id, templateVersionId: sel.version.id, tried: sel.tried });
     created.push({ id: comm.id, audience: a.aud, kind: sel.kind, requestedKind: req.requestedKind, deliveries: live });
   }

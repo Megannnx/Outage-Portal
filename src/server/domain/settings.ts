@@ -23,6 +23,13 @@ export const SettingsSchema = z.object({
     FSN: "Fibre Suburb Support: support@fibresuburb.co.za",
     FMAS: "FMAS Support: support@fmas.co.za",
   }),
+  /**
+   * Resident safety lock. off = nothing is ever sent to residents (messages are
+   * prepared and visible, but not delivered); test = only the test account codes
+   * below receive resident messages; live = the site's residents receive them.
+   */
+  residentDelivery: z.enum(["off", "test", "live"]).default("off"),
+  residentTestAccounts: z.array(z.string().trim().min(1).max(64)).max(10).default([]),
   /** Hard bounces before a recipient is marked invalid. */
   bounceInvalidThreshold: z.number().int().min(1).max(10).default(2),
   /** Minimum extraction confidence for a fact to be pre-ticked. */

@@ -8,6 +8,7 @@ import { getAdapter, deliveryMode } from "../comms/adapters";
 import { smtpNetworks, smtpProfile } from "../comms/adapters/smtp";
 import { KINDS } from "../domain/catalog";
 import { secretSource } from "../lib/secrets";
+import { getSettings } from "../domain/settings";
 
 export interface Check { key: string; label: string; status: "ok" | "warn" | "fail"; detail: string; fix?: string }
 
@@ -16,6 +17,7 @@ const n = async (db: DB, q: ReturnType<typeof sql>) => Number(((await db.execute
 export async function readiness(db: DB): Promise<{ mode: string; ready: boolean; checks: Check[] }> {
   const checks: Check[] = [];
   const add = (c: Check) => checks.push(c);
+  const settings = await getSettings(db);
 
   const real = sql`code not like 'DEMO-%' and active`;
   const sitesTotal = await n(db, sql`select count(*) as n from sites where ${real}`);
@@ -59,6 +61,9 @@ export async function readiness(db: DB): Promise<{ mode: string; ready: boolean;
   const nets = smtpNetworks();
   const smtpDetail = nets.length ? nets.map((n) => { const c = smtpProfile(n); return `${n}: ${c.from ?? "?"} via ${c.host ?? "?"}`; }).join(" · ") : `Relay ${process.env.SMTP_HOST}`;
   const smtpAllErr = smtpErr ?? (deliveryMode() === "capture" ? null : nets.map((n) => smtp.configError(n)).find(Boolean) ?? null);
+  add({ key: "resident_lock", label: "Resident sending", status: settings.residentDelivery === "live" ? "ok" : "warn",
+    detail: settings.residentDelivery === "off" ? "Locked — nothing is sent to residents" : settings.residentDelivery === "test" ? `Test mode — only test account(s) ${settings.residentTestAccounts.join(", ") || "(none set)"} receive resident messages` : "Live — residents receive outage messages",
+    fix: "Admin › Settings › Resident sending. Switch to Live only after the resident test has been signed off." });
   add({ key: "smtp", label: "Email (SMTP) configured — ISPs & internal", status: smtpAllErr ? "fail" : "ok", detail: smtpAllErr ?? smtpDetail, fix: "Set SMTP_HOST and SMTP_PORT, plus per network SMTP_FSN_USER / SMTP_FSN_PASSWORD / SMTP_FSN_FROM and SMTP_FMAS_USER / SMTP_FMAS_PASSWORD / SMTP_FMAS_FROM, in the hosting environment" });
   add({ key: "client_api", label: "Residents' communications API configured", status: capiErr ? "fail" : "ok", detail: capiErr ?? "Configured", fix: "Set CLIENT_API_URL and CLIENT_API_TOKEN (see docs/INTEGRATIONS.md)" });
   const nx = (await db.execute(sql`select last_success_at from integration_health where key = 'monitoring:netxms'`)).rows[0] as { last_success_at: string | null } | undefined;
