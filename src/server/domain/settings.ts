@@ -18,6 +18,11 @@ export const SettingsSchema = z.object({
   businessHoursStart: z.number().int().min(0).max(23).default(7),
   businessHoursEnd: z.number().int().min(1).max(24).default(18),
   supportContact: z.string().default("ATEC Support: support@atec.co.za"),
+  /** Per-network support line (keyed by site network, e.g. FSN, FMAS); falls back to supportContact. */
+  supportContactByNetwork: z.record(z.string(), z.string()).default({
+    FSN: "Fibre Suburb Support: support@fibresuburb.co.za",
+    FMAS: "FMAS Support: support@fmas.co.za",
+  }),
   /** Hard bounces before a recipient is marked invalid. */
   bounceInvalidThreshold: z.number().int().min(1).max(10).default(2),
   /** Minimum extraction confidence for a fact to be pre-ticked. */

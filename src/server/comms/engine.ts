@@ -77,7 +77,7 @@ export async function buildVars(db: Tx, inc: Incident, site: Site, settings: Set
     repair_status: ts.repairStatus ? REPAIR_STATUS_WORDING[ts.repairStatus] : undefined,
     eta,
     next_update_time: nextUpdate,
-    support_contact: settings.supportContact,
+    support_contact: settings.supportContactByNetwork[(site.network ?? "").toUpperCase()]?.trim() || settings.supportContact,
     restored_time: inc.restoredAt ? fmtDateTime(inc.restoredAt) : undefined,
     downtime: inc.downtimeSeconds != null ? fmtDuration(inc.downtimeSeconds) : undefined,
     ...extra,

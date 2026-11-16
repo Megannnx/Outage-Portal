@@ -135,7 +135,9 @@ export function Policies() {
             {num("businessHoursStart", "Business hours start (hour)")}{num("businessHoursEnd", "Business hours end (hour)")}
             {num("bounceInvalidThreshold", "Hard bounces before a contact is marked invalid")}
             {num("monitoringSilenceAlertMinutes", "Alert if NetXMS is silent for (minutes)", "Set up the NetXMS heartbeat so quiet periods don't false-alarm.")}
-            <Field label="Support contact line ({{support_contact}})"><input className={inputCls} value={s.supportContact} onChange={(e) => setS({ ...s, supportContact: e.target.value })} /></Field>
+            <Field label="Support contact — FSN sites ({{support_contact}})"><input className={inputCls} value={s.supportContactByNetwork?.FSN ?? ""} onChange={(e) => setS({ ...s, supportContactByNetwork: { ...s.supportContactByNetwork, FSN: e.target.value } })} /></Field>
+            <Field label="Support contact — FMAS sites ({{support_contact}})"><input className={inputCls} value={s.supportContactByNetwork?.FMAS ?? ""} onChange={(e) => setS({ ...s, supportContactByNetwork: { ...s.supportContactByNetwork, FMAS: e.target.value } })} /></Field>
+            <Field label="Support contact — sites with no network set"><input className={inputCls} value={s.supportContact} onChange={(e) => setS({ ...s, supportContact: e.target.value })} /></Field>
             <Field label="NetXMS 'down' events" hint="Comma-separated"><input className={inputCls} value={s.downEvents.join(", ")} onChange={(e) => setS({ ...s, downEvents: e.target.value.split(",").map((x) => x.trim().toUpperCase()).filter(Boolean) })} /></Field>
             <Field label="NetXMS 'up' events"><input className={inputCls} value={s.upEvents.join(", ")} onChange={(e) => setS({ ...s, upEvents: e.target.value.split(",").map((x) => x.trim().toUpperCase()).filter(Boolean) })} /></Field>
             <Field label="Delivery retry backoff (minutes)"><input className={inputCls} value={s.deliveryRetryMinutes.join(", ")} onChange={(e) => setS({ ...s, deliveryRetryMinutes: e.target.value.split(",").map((x) => Number(x.trim())).filter((x) => x > 0) })} /></Field>
