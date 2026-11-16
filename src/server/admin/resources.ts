@@ -29,7 +29,7 @@ export const RESOURCES: Record<string, Resource> = {
     table: s.sites, order: asc(s.sites.name), softDelete: true, label: (r) => `${r.code} ${r.name}`,
     schema: z.object({
       code: z.string().trim().min(2).max(16).regex(/^[A-Z0-9_-]+$/, "Upper-case letters, digits, - or _"), name: z.string().trim().min(2).max(100),
-      estate: z.string().max(100).default(""), region: z.string().max(100).default(""), address: z.string().max(300).default(""),
+      estate: z.string().max(100).default(""), region: z.string().max(100).default(""), network: z.string().trim().toUpperCase().max(20).default(""), address: z.string().max(300).default(""),
       latitude: opt(z.number().min(-90).max(90)), longitude: opt(z.number().min(-180).max(180)), backhaulProviderId: opt(uuid),
       circuitRef: z.string().max(100).default(""), upstreamRef: z.string().max(100).default(""), technicalTeam: z.string().max(60).default("NOC"),
       residentListRef: z.string().max(200).default(""), rfoRequired: z.boolean().default(true), active: z.boolean().default(true), notes: z.string().max(2000).default(""),

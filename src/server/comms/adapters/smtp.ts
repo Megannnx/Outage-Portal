@@ -9,39 +9,55 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { DeliveryError, type DeliveryAdapter, type OutboundMessage, type SendResult } from "./types";
 
-let transporter: Transporter | null = null;
+const transporters = new Map<string, Transporter>();
 
-function cfg() {
+/**
+ * Each network sends from its own mailbox (e.g. FSN → noreply@fibresuburb.co.za,
+ * FMAS → noreply@fmas.co.za). SMTP_<NETWORK>_* overrides the shared SMTP_* value,
+ * so a shared host/port only needs to be set once. Internal mail and sites with
+ * no network use the shared SMTP_* account, or the first network account if
+ * there is no shared one.
+ */
+export function smtpNetworks(): string[] {
+  return [...new Set(Object.keys(process.env).map((k) => /^SMTP_([A-Z0-9]+)_(USER|FROM)$/.exec(k)?.[1]).filter((x): x is string => !!x))].sort();
+}
+
+export function smtpProfile(network?: string) {
+  const e = process.env;
+  let net = (network ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!net || !(e[`SMTP_${net}_USER`] || e[`SMTP_${net}_FROM`])) net = e.SMTP_USER || e.SMTP_FROM ? "" : smtpNetworks()[0] ?? "";
+  const v = (k: string) => (net && e[`SMTP_${net}_${k}`]) || e[`SMTP_${k}`];
+  const from = v("FROM") ?? v("USER");
   return {
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT ?? 587),
-    secure: process.env.SMTP_SECURE === "true",
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASSWORD,
-    from: process.env.SMTP_FROM,
-    replyTo: process.env.SMTP_REPLY_TO,
-    msgIdDomain: process.env.SMTP_MESSAGE_ID_DOMAIN ?? "outages.atec.local",
+    key: net || "default", network: net || null,
+    host: v("HOST"), port: Number(v("PORT") ?? 587), secure: v("SECURE") === "true", requireTls: v("REQUIRE_TLS") !== "false",
+    user: v("USER"), pass: v("PASSWORD"), from, replyTo: v("REPLY_TO"),
+    msgIdDomain: v("MESSAGE_ID_DOMAIN") ?? /@([^>\s]+)/.exec(from ?? "")?.[1] ?? "outages.atec.local",
   };
 }
 
 export const smtpAdapter: DeliveryAdapter = {
   channel: "smtp",
   isCapture: false,
-  configError() {
-    const c = cfg();
-    if (!c.host) return "SMTP_HOST is not set";
-    if (!c.from) return "SMTP_FROM is not set";
+  configError(network?: string) {
+    const c = smtpProfile(network);
+    const label = c.network ? `SMTP_${c.network}_` : "SMTP_";
+    if (!c.host) return `${label}HOST (or SMTP_HOST) is not set`;
+    if (!c.from) return `${label}FROM / ${label}USER is not set`;
+    if (c.user && !c.pass) return `${label}PASSWORD is not set`;
     return null;
   },
   async send(msg: OutboundMessage): Promise<SendResult> {
-    const c = cfg();
+    const c = smtpProfile(msg.meta.network);
+    let transporter = transporters.get(c.key);
     if (!transporter) {
       transporter = nodemailer.createTransport({
         host: c.host, port: c.port, secure: c.secure,
         auth: c.user ? { user: c.user, pass: c.pass } : undefined,
-        requireTLS: !c.secure && process.env.SMTP_REQUIRE_TLS !== "false",
+        requireTLS: !c.secure && c.requireTls,
         connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 30_000,
       });
+      transporters.set(c.key, transporter);
     }
     // Deterministic Message-ID: a retry after a crash re-uses it, so receiving
     // systems that de-duplicate on Message-ID will drop the second copy.

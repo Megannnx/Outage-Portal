@@ -102,3 +102,19 @@ describe("backhaul privacy", () => {
     for (const c of [...CAUSE_ROWS, ...FAULT_ROWS]) expect(c.publicDescription).not.toMatch(/backhaul|provider|their /i);
   });
 });
+
+import { smtpProfile, smtpNetworks } from "@/server/comms/adapters/smtp";
+describe("per-network SMTP accounts", () => {
+  it("picks the site's network mailbox and falls back to shared settings", () => {
+    const saved = { ...process.env };
+    for (const k of Object.keys(process.env)) if (k.startsWith("SMTP_")) delete process.env[k];
+    Object.assign(process.env, { SMTP_HOST: "smtp.example.com", SMTP_PORT: "587",
+      SMTP_FSN_USER: "noreply@fibresuburb.co.za", SMTP_FSN_PASSWORD: "x", SMTP_FMAS_USER: "noreply@fmas.co.za", SMTP_FMAS_PASSWORD: "y", SMTP_FMAS_HOST: "mail.fmas.co.za" });
+    try {
+      expect(smtpNetworks()).toEqual(["FMAS", "FSN"]);
+      expect(smtpProfile("FSN")).toMatchObject({ host: "smtp.example.com", user: "noreply@fibresuburb.co.za", from: "noreply@fibresuburb.co.za", msgIdDomain: "fibresuburb.co.za" });
+      expect(smtpProfile("fmas")).toMatchObject({ host: "mail.fmas.co.za", user: "noreply@fmas.co.za", pass: "y" });
+      expect(smtpProfile("").network).toBe("FMAS"); // no shared account → first network account
+    } finally { for (const k of Object.keys(process.env)) if (k.startsWith("SMTP_")) delete process.env[k]; Object.assign(process.env, saved); }
+  });
+});

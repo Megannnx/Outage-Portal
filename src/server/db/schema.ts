@@ -124,6 +124,8 @@ export const sites = pgTable("sites", {
   name: text("name").notNull(),
   estate: text("estate").notNull().default(""),
   region: text("region").notNull().default(""),
+  /** Brand/network the site belongs to (FSN, FMAS). Picks the email account ISP notices are sent from. */
+  network: text("network").notNull().default(""),
   address: text("address").notNull().default(""),
   latitude: doublePrecision("latitude"),
   longitude: doublePrecision("longitude"),

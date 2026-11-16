@@ -5,6 +5,7 @@
 import { sql } from "drizzle-orm";
 import type { DB } from "../db/client";
 import { getAdapter, deliveryMode } from "../comms/adapters";
+import { smtpNetworks, smtpProfile } from "../comms/adapters/smtp";
 import { KINDS } from "../domain/catalog";
 import { secretSource } from "../lib/secrets";
 
@@ -53,9 +54,12 @@ export async function readiness(db: DB): Promise<{ mode: string; ready: boolean;
 
   // Integrations
   const smtp = getAdapter("smtp"); const capi = getAdapter("client_api");
-  const smtpErr = deliveryMode() === "capture" ? (process.env.SMTP_HOST ? null : "SMTP_HOST is not set") : smtp.configError();
+  const smtpErr = deliveryMode() === "capture" ? (smtpProfile().host ? null : "SMTP_HOST is not set") : smtp.configError();
   const capiErr = deliveryMode() === "capture" ? (process.env.CLIENT_API_URL ? null : "CLIENT_API_URL is not set") : capi.configError();
-  add({ key: "smtp", label: "Email (SMTP) configured — ISPs & internal", status: smtpErr ? "fail" : "ok", detail: smtpErr ?? `Relay ${process.env.SMTP_HOST}`, fix: "Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM in the hosting environment" });
+  const nets = smtpNetworks();
+  const smtpDetail = nets.length ? nets.map((n) => { const c = smtpProfile(n); return `${n}: ${c.from ?? "?"} via ${c.host ?? "?"}`; }).join(" · ") : `Relay ${process.env.SMTP_HOST}`;
+  const smtpAllErr = smtpErr ?? (deliveryMode() === "capture" ? null : nets.map((n) => smtp.configError(n)).find(Boolean) ?? null);
+  add({ key: "smtp", label: "Email (SMTP) configured — ISPs & internal", status: smtpAllErr ? "fail" : "ok", detail: smtpAllErr ?? smtpDetail, fix: "Set SMTP_HOST and SMTP_PORT, plus per network SMTP_FSN_USER / SMTP_FSN_PASSWORD / SMTP_FSN_FROM and SMTP_FMAS_USER / SMTP_FMAS_PASSWORD / SMTP_FMAS_FROM, in the hosting environment" });
   add({ key: "client_api", label: "Residents' communications API configured", status: capiErr ? "fail" : "ok", detail: capiErr ?? "Configured", fix: "Set CLIENT_API_URL and CLIENT_API_TOKEN (see docs/INTEGRATIONS.md)" });
   const nx = (await db.execute(sql`select last_success_at from integration_health where key = 'monitoring:netxms'`)).rows[0] as { last_success_at: string | null } | undefined;
   const realEvents = await n(db, sql`select count(*) as n from monitoring_events where source = 'netxms' and raw->>'simulated' is null`);

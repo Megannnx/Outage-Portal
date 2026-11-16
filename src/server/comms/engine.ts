@@ -279,7 +279,7 @@ export async function deliverCommunication(db: DB, communicationId: string): Pro
 
   for (const d of work.due) {
     const adapter = getAdapter(d.channel as "client_api" | "smtp");
-    const cfgErr = adapter.configError();
+    const cfgErr = adapter.configError(work.site.network);
     let status: "accepted" | "delivered" | "deferred" | "failed";
     let providerId: string | null = null, error: string | null = null;
     if (cfgErr) {
@@ -289,7 +289,7 @@ export async function deliverCommunication(db: DB, communicationId: string): Pro
       try {
         const r = await adapter.send({
           deliveryId: d.id, address: d.address, subject: work.c.subject, text: work.c.body, html: toHtml(work.c.body),
-          meta: { incidentReference: work.inc.reference, siteCode: work.site.code, audience: work.c.audience, kind: work.c.kind },
+          meta: { incidentReference: work.inc.reference, siteCode: work.site.code, audience: work.c.audience, kind: work.c.kind, network: work.site.network },
         });
         status = r.status; providerId = r.providerMessageId ?? null;
         // Capture mode never reports an integration as healthy — it is not a live connection.

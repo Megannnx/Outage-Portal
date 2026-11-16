@@ -48,7 +48,7 @@ export async function exportSitesWorkbook(db: DB): Promise<Buffer> {
     const ip = crit.find((i) => i.matchType === "ip");
     const dev = crit.find((i) => i.matchType === "name_exact" || i.matchType === "name_prefix")?.value ?? oid?.label ?? "";
     const ispNames = links.filter((l) => l.siteId === s.id).map((l) => ispRows.find((x) => x.id === l.ispId)?.name).filter(Boolean).join(", ");
-    ws.addRow([networkOf(s.notes), s.region, s.code, s.name, dev, oid?.value ?? "", provs.find((p) => p.id === s.backhaulProviderId)?.name ?? "",
+    ws.addRow([s.network || networkOf(s.notes), s.region, s.code, s.name, dev, oid?.value ?? "", provs.find((p) => p.id === s.backhaulProviderId)?.name ?? "",
       s.circuitRef, s.upstreamRef, s.residentListRef, ispNames, s.technicalTeam, s.rfoRequired ? "Y" : "N", s.address, s.notes, ip?.value ?? "", s.id]);
   }
   ws.eachRow((row, n) => {
@@ -131,6 +131,7 @@ export async function importSitesWorkbook(db: DB, actor: Actor, file: Buffer, ap
     set("name", name, "name");
     if (!site) set("estate", name, "estate");
     const region = cell(r, "Province"); if (region) set("region", region, "province");
+    const network = cell(r, "Network").toUpperCase(); if (network) set("network", network, "network");
     for (const [k, c, l] of [["circuitRef", "Circuit / reference", "circuit"], ["upstreamRef", "Upstream POP", "upstream POP"], ["residentListRef", "Residents list reference", "residents list"], ["technicalTeam", "Technical team", "team"], ["address", "Address", "address"]] as const) {
       const v = cell(r, c); if (v) set(k, v, l);
     }

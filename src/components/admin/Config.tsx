@@ -25,7 +25,7 @@ export function Sites() {
       <Crud key={`s${ver}`} resource="sites" title="Sites" search={(r) => `${r.code} ${r.name} ${r.estate} ${r.circuitRef}`}
         fields={[
           { key: "code", label: "Site code", required: true, hint: "e.g. DWV — matches NetXMS naming" }, { key: "name", label: "Site name", required: true, warn: "Inserted as {{site_name}} in customer messages." },
-          { key: "estate", label: "Estate / area", warn: "Inserted as {{estate_name}}." }, { key: "region", label: "Region" }, { key: "address", label: "Address", type: "textarea" },
+          { key: "estate", label: "Estate / area", warn: "Inserted as {{estate_name}}." }, { key: "region", label: "Region" }, { key: "network", label: "Network", type: "select", options: [{ value: "", label: "—" }, { value: "FSN", label: "FSN (Fibre Suburb)" }, { value: "FMAS", label: "FMAS" }], warn: "Chooses which email account ISP notices for this site are sent from." }, { key: "address", label: "Address", type: "textarea" },
           { key: "latitude", label: "Latitude", type: "number", nullable: true }, { key: "longitude", label: "Longitude", type: "number", nullable: true },
           { key: "backhaulProviderId", label: "Backhaul provider", type: "select", options: providers, nullable: true },
           { key: "circuitRef", label: "Circuit / reference" }, { key: "upstreamRef", label: "Upstream point (POP)", hint: "Sites sharing this are suggested as one related outage." },
