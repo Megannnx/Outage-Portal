@@ -5,7 +5,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "./db/client";
 import { runMigrations } from "./db/migrate";
-import { roles, users } from "./db/schema";
+import { roles, templateApprovals, users } from "./db/schema";
 import { seedReferenceData, ROLE_ROWS } from "./domain/seed-data";
 import { AppError } from "./lib/errors";
 import { hashPassword } from "./auth/session";
@@ -42,6 +42,13 @@ export async function runSetup(opts: { admin?: { name: string; email: string; pa
   }
   const demo = !!opts.demo && deliveryMode() === "capture";
   await seedReferenceData(db, { publishAs: demo ? adminId : null });
-  if (demo) await seedDemoSites(db);
+  if (demo && adminId) {
+    // Self-hosted installs seed starter wording as "pending approval" before setup runs; demo mode publishes it.
+    const pending = await db.execute(sql`update template_versions tv set status = 'published', published_at = now()
+      from communication_templates t where t.id = tv.template_id and t.built_in and tv.version = 1 and tv.status = 'pending_approval'
+      and not exists (select 1 from template_versions p where p.template_id = tv.template_id and p.status = 'published') returning tv.id`);
+    for (const r of pending.rows as { id: string }[]) await db.insert(templateApprovals).values({ templateVersionId: r.id, approverId: adminId, decision: "approved", comment: "Demo setup (capture mode)" });
+    await seedDemoSites(db);
+  }
   return { demo };
 }

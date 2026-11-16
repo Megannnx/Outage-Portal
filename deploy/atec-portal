@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# atec-portal — day-to-day administration of the self-hosted ATEC Outage Portal.
+set -Eeuo pipefail
+APP_DIR="${APP_DIR:-/opt/atec-outage-portal}"
+cd "$APP_DIR" || { echo "Portal not found in $APP_DIR"; exit 1; }
+dc() { docker compose "$@"; }
+health() { curl -fsS -m 10 http://127.0.0.1:3000/api/health 2>/dev/null || echo '{"ok":false}'; }
+
+case "${1:-help}" in
+  status)
+    echo "== Containers"; dc ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}'
+    echo; echo "== Health (/api/health)"; health; echo
+    echo; echo "== Disk"; df -h "$APP_DIR" | tail -1
+    echo; echo "== Latest backup"; ls -1t backups/portal-*.dump 2>/dev/null | head -1 || echo "none yet"
+    echo; echo "== Queue"; dc exec -T db psql -U portal -d portal -tAc \
+      "select status, count(*) from jobs where status in ('pending','running','dead') group by status" 2>/dev/null || true
+    echo; echo "== Open system alerts"; dc exec -T db psql -U portal -d portal -tAc \
+      "select severity || ': ' || message from system_alerts where resolved_at is null order by raised_at desc limit 10" 2>/dev/null || true
+    ;;
+  logs)      dc logs --tail="${2:-200}" -f web worker ;;
+  restart)   dc up -d --remove-orphans && dc restart web worker ;;
+  stop)      dc stop ;;
+  start)     dc up -d --remove-orphans ;;
+  update)
+    [[ -d .git ]] || { echo "Not a git checkout — copy the new version over and re-run install.sh"; exit 1; }
+    "$0" backup
+    git fetch -q origin && git reset -q --hard "origin/$(git rev-parse --abbrev-ref HEAD)"
+    dc build --pull && dc up -d --remove-orphans
+    echo "Updated to $(git log -1 --format='%h %s')" ;;
+  backup)
+    f="backups/portal-$(date -u +%Y%m%dT%H%M%SZ)-manual.dump"
+    dc exec -T db pg_dump -U portal -d portal -Fc > "$f" && chmod 600 "$f" && echo "Backup written: $APP_DIR/$f" ;;
+  restore)
+    f="${2:?usage: atec-portal restore backups/portal-XXXX.dump}"
+    read -r -p "This REPLACES the current database with $f. Type RESTORE to continue: " c; [[ "$c" == RESTORE ]] || exit 1
+    "$0" backup
+    dc stop web worker
+    dc exec -T db pg_restore -U portal -d portal --clean --if-exists < "$f"
+    dc up -d web worker && echo "Restored. Overdue timers will catch up automatically." ;;
+  import-supabase)
+    # Copy all portal data from the hosted (Supabase) database onto this VM.
+    url="${2:?usage: atec-portal import-supabase '<Supabase SESSION pooler connection string>'}"
+    read -r -p "This REPLACES this VM's portal database with the Supabase copy. Type IMPORT to continue: " c; [[ "$c" == IMPORT ]] || exit 1
+    "$0" backup || true
+    dc stop web worker
+    tmp=$(mktemp); trap 'rm -f "$tmp"' EXIT
+    docker run --rm -e PGURL="$url" postgres:17-alpine sh -c 'pg_dump "$PGURL" -Fc --no-owner --no-privileges -n public -n drizzle' > "$tmp"
+    dc exec -T db pg_restore -U portal -d portal --clean --if-exists --no-owner --no-privileges < "$tmp" || true
+    # MFA secrets were encrypted with the hosted key; this VM uses its own APP_ENCRYPTION_KEY.
+    dc exec -T db psql -U portal -d portal -qc "update users set mfa_enabled = false, mfa_secret_enc = null; delete from settings where key like 'secret.%'; update sessions set revoked_at = now() where revoked_at is null;"
+    dc up -d web worker
+    echo "Imported. Everyone signs in again; users re-enrol two-factor on first sign-in."
+    echo "Then turn off the hosted scheduler and Vercel project (see docs/SELF_HOSTING.md)." ;;
+  watchdog)
+    # Run by cron every 5 minutes. Restarts services when unhealthy; logs to syslog.
+    if ! health | grep -q '"ok":true'; then
+      logger -t atec-portal "health check failed: $(health) — restarting services"
+      dc up -d --remove-orphans >/dev/null 2>&1; dc restart web worker >/dev/null 2>&1
+    elif ! health | grep -q '"worker":true'; then
+      logger -t atec-portal "worker heartbeat stale — restarting worker"
+      dc restart worker >/dev/null 2>&1
+    fi ;;
+  *)
+    cat <<HELP
+atec-portal <command>
+  status            containers, health, queue, alerts, disk, latest backup
+  logs [n]          follow web + worker logs
+  restart|stop|start
+  update            backup, pull latest code from GitHub, rebuild, restart
+  backup            write a database backup to $APP_DIR/backups
+  restore <file>    restore a backup (asks for confirmation)
+  import-supabase <url>  copy all data from the hosted Supabase database onto this VM
+HELP
+    ;;
+esac

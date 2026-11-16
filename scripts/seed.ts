@@ -16,9 +16,11 @@ async function main() {
   const db = getDb();
   await seedReferenceData(db, {});
   const admins = await db.select().from(users).where(eq(users.role, "admin"));
-  if (!admins.length) {
-    const email = process.env.BOOTSTRAP_ADMIN_EMAIL, pw = process.env.BOOTSTRAP_ADMIN_PASSWORD;
-    if (!email || !pw || pw.length < 12) throw new Error("Set BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD (12+ chars) to create the first administrator");
+  const email = process.env.BOOTSTRAP_ADMIN_EMAIL, pw = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+  if (!admins.length && !(email && pw)) {
+    console.log("[seed] no administrator yet — open https://<your-portal>/setup to create the first one");
+  } else if (!admins.length && email && pw) {
+    if (pw.length < 12) throw new Error("BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters");
     await db.insert(users).values({ email, name: process.env.BOOTSTRAP_ADMIN_NAME ?? "Administrator", role: "admin", passwordHash: await hashPasswordRaw(pw) });
     console.log(`[seed] administrator ${email} created — sign in and enrol MFA, then approve the starter templates`);
   }

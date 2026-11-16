@@ -1,3 +1,7 @@
+{
+  email {$ACME_EMAIL}
+}
+
 {$PORTAL_DOMAIN} {
   encode gzip
   # Server-Sent Events must not be buffered.

@@ -15,7 +15,7 @@ x-app: &app
 
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: portal
@@ -67,12 +67,12 @@ services:
     profiles: [tls]
     restart: unless-stopped
     ports: ["80:80", "443:443"]
-    environment: { PORTAL_DOMAIN: "${PORTAL_DOMAIN:-outages.example.com}" }
+    environment: { PORTAL_DOMAIN: "${PORTAL_DOMAIN:-outages.example.com}", ACME_EMAIL: "${ACME_EMAIL:-}" }
     volumes: ["./deploy/Caddyfile:/etc/caddy/Caddyfile:ro", "caddy_data:/data"]
     depends_on: [web]
 
   backup:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     profiles: [backup]
     restart: unless-stopped
     environment:
