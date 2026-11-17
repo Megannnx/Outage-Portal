@@ -6,6 +6,8 @@ Automated network-outage communications and incident management for ATEC.
 
 Service Desk staff never write outage emails. Technical never chooses wording or timing. Management never compiles reports by hand.
 
+> **Picking this up?** Read [docs/HANDOVER.md](docs/HANDOVER.md) first.
+
 ## Run locally
 
 ```bash
